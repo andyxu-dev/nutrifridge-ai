@@ -1,18 +1,95 @@
 # NutriFridge AI
 
-A personalized nutrition + refrigerator inventory assistant. Enter your body metrics and fitness goals, record what food you have, and get meal recommendations based on your daily targets, available ingredients, expiration dates, and goal (fat loss / muscle gain / maintenance).
+> Smart fridge management meets personalized nutrition — track what you have, eat what you need.
+
+A full-stack health-tech SaaS demo built with Next.js 14 + FastAPI. Enter your body metrics and fitness goals, log your fridge inventory, and get AI-scored meal recommendations that prioritise expiring ingredients, respect your macro targets, and match your cuisine preferences.
+
+---
+
+## Feature Overview
+
+| Feature | Description |
+|---------|-------------|
+| **Nutrition Engine** | Mifflin-St Jeor BMR → TDEE → macro targets (protein/carbs/fat) |
+| **Inventory Tracking** | Fridge, freezer, pantry with expiration risk badges |
+| **Expiration Alerts** | Expired / high / medium / low / unknown risk classification |
+| **Meal Planner** | 20 named templates (10 Chinese + 10 Western) scored against 7 criteria |
+| **Meal Scoring** | Urgency · protein gap · calorie fit · preference · cooking time · variety · dislikes |
+| **Daily Nutrition Log** | Mark meals as eaten · deducts inventory quantities · progress bars |
+| **Food Database** | 40+ foods with auto-fill when adding inventory items |
+| **User Preferences** | Cuisine · cooking time · diet style · preferred / disliked foods |
+| **Weekly Grocery List** | Personalised buy/avoid recommendations with priority badges |
+| **Waste Tracking** | Discard items with a reason → calories wasted logged and surfaced on dashboard |
+| **Backend QA Script** | 13 check groups / 75 assertions covering all features |
 
 ---
 
 ## Tech Stack
 
-| Layer      | Technology                          |
-|------------|-------------------------------------|
-| Frontend   | Next.js 14, TypeScript, TailwindCSS |
-| Backend    | FastAPI, Python 3.11+               |
-| Database   | SQLite (file: `backend/nutrifridge.db`) |
-| ORM        | SQLAlchemy 2.0                      |
-| API style  | REST                                |
+| Layer       | Technology                            |
+|-------------|---------------------------------------|
+| Frontend    | Next.js 14 (App Router), TypeScript, TailwindCSS |
+| Backend     | FastAPI, Python 3.11+                 |
+| Database    | SQLite — `backend/nutrifridge.db`     |
+| ORM         | SQLAlchemy 2.0                        |
+| Validation  | Pydantic v2                           |
+| API style   | REST                                  |
+
+---
+
+## Architecture
+
+```mermaid
+flowchart LR
+    subgraph Frontend["Frontend (Next.js 14)"]
+        D[Dashboard]
+        P[Profile]
+        I[Inventory]
+        G[Grocery List]
+    end
+
+    subgraph Backend["Backend (FastAPI)"]
+        PR[/profile]
+        NL[/nutrition-log]
+        MP[/meal-plan/today]
+        INV[/inventory]
+        GL[/grocery-list/weekly]
+        WL[/waste-log]
+    end
+
+    subgraph Services["Python Services"]
+        NE["nutrition_engine.py\nMifflin-St Jeor BMR/TDEE"]
+        EE["expiration_engine.py\nRisk classification"]
+        MS["meal_scorer.py\n7-component scoring"]
+        MT["meal_templates.py\n20 named templates"]
+        FD["food_database.py\n40+ foods"]
+        UC["unit_converter.py\ng/kg/lb/oz"]
+    end
+
+    subgraph DB["SQLite"]
+        U[(Users)]
+        II[(InventoryItems)]
+        DL[(DailyLog / MealLog)]
+        WLog[(WasteLog)]
+    end
+
+    Frontend -- REST/JSON --> Backend
+    Backend --> Services
+    Services --> DB
+```
+
+---
+
+## Screenshots
+
+> Screenshots taken after seeding sample data with `python3 seed.py`.
+
+| Page | Preview |
+|------|---------|
+| **Dashboard** | _[screenshot placeholder — run the app to see the live dashboard]_ |
+| **Inventory** | _[screenshot placeholder — fridge/freezer/pantry with risk badges]_ |
+| **Profile** | _[screenshot placeholder — body metrics + nutrition targets]_ |
+| **Grocery List** | _[screenshot placeholder — personalised weekly shopping recommendations]_ |
 
 ---
 
@@ -31,18 +108,15 @@ source venv/bin/activate        # macOS / Linux
 # Install dependencies
 pip install -r requirements.txt
 
-# Start the API server (auto-reloads on file change)
+# Start the API server
 uvicorn app.main:app --reload
 ```
 
-The API is now running at **http://localhost:8000**  
-Interactive docs (Swagger UI): **http://localhost:8000/docs**
+The API runs at **http://localhost:8000** — interactive docs at **http://localhost:8000/docs**.
 
 ---
 
 ### 2 — Seed sample data
-
-Open a second terminal (keep the server running):
 
 ```bash
 cd backend
@@ -50,15 +124,11 @@ source venv/bin/activate
 python3 seed.py
 ```
 
-This inserts:
-- **User:** Alex — 175 cm, 88 kg, 24 yo, male, moderate activity, fat-loss goal
-- **7 inventory items** with varying expiration dates so every risk level is visible
+Seeds **Alex** (175 cm, 88 kg, 24 yo, male, moderate activity, fat-loss goal, mixed cuisine, high-protein diet) with 7 inventory items covering every expiration risk level.
 
 ---
 
 ### 3 — Frontend
-
-Open a third terminal:
 
 ```bash
 cd frontend
@@ -66,33 +136,34 @@ npm install
 npm run dev
 ```
 
-The app is now running at **http://localhost:3000** and redirects to `/dashboard` automatically.
+Open **http://localhost:3000** — it redirects to `/dashboard` automatically.
 
 ---
 
-## Local URLs at a Glance
+## Demo Flow
 
-| URL                             | What you see                          |
-|---------------------------------|---------------------------------------|
-| http://localhost:3000/dashboard | Nutrition targets, urgent items, meal plan |
-| http://localhost:3000/profile   | Create/edit profile, computed targets |
-| http://localhost:3000/inventory | Add/delete items, expiration table    |
-| http://localhost:8000/docs      | Swagger UI — full API explorer        |
-| http://localhost:8000/health    | `{ "status": "ok" }`                 |
+After seeding, run through this flow to see all features:
+
+1. **Dashboard** → 4 nutrition-progress cards, recommended meal plan with match-score bars, urgent ingredients sidebar
+2. Click **"Mark as Eaten"** on a meal → progress bars update, meal moves to _Meals Eaten Today_
+3. **Profile** → form pre-fills with Alex's data; change Goal to _Muscle Gain_ → calories rise ~700 kcal
+4. **Inventory** → 7 items with risk badges; click _+ Add Item_, type a food name to trigger auto-fill
+5. Click **"Discard"** on an expiring item, pick a reason → waste event appears on the dashboard
+6. **Grocery List** → personalised buy/avoid list with priority badges and nutrition insight
+7. Stop the backend (`Ctrl-C`) and refresh the dashboard → red _Backend not reachable_ banner appears
 
 ---
 
-## Manual Test Checklist
+## Local URLs
 
-After seeding, run through these in order:
-
-- [ ] **Dashboard** loads with 4 nutrition-target cards (calories ≈ 2481 kcal for Alex)
-- [ ] **Urgent Ingredients** table shows Strawberries (high), Beef (high), Cooked Rice (high), Spinach (medium)
-- [ ] **Meal Plan** shows breakfast / lunch / dinner / snack cards, each with ingredients and macros
-- [ ] **Daily Summary** shows estimated totals and remaining-to-target values
-- [ ] **/profile** — form pre-fills with Alex's data; change Goal to "Muscle Gain", save → calories rise by ~700
-- [ ] **/inventory** — 7 items appear with correct risk badges; add a new item; delete it
-- [ ] **Stop the backend** (`Ctrl-C`) and refresh the dashboard — a red "Backend is not reachable" banner should appear instead of stale/empty states
+| URL | What you see |
+|-----|--------------|
+| http://localhost:3000/dashboard   | Hero, nutrition progress, meal plan, sidebar |
+| http://localhost:3000/profile     | Body metrics + food preferences + nutrition targets |
+| http://localhost:3000/inventory   | Add/discard/delete items, expiration table |
+| http://localhost:3000/grocery-list | Weekly shopping recommendations |
+| http://localhost:8000/docs        | Swagger UI — full API explorer |
+| http://localhost:8000/health      | `{ "status": "ok" }` |
 
 ---
 
@@ -100,50 +171,61 @@ After seeding, run through these in order:
 
 ```
 NutriFridge AI/
-├── .gitignore
 ├── README.md
 ├── backend/
 │   ├── requirements.txt
-│   ├── seed.py
+│   ├── seed.py                   # Sample user + 7 inventory items
+│   ├── qa_check.py               # 75 assertions across 13 check groups
 │   └── app/
-│       ├── main.py              # FastAPI app, CORS, router registration
-│       ├── database.py          # SQLAlchemy engine + session
+│       ├── main.py               # FastAPI app, CORS, router registration
+│       ├── database.py           # SQLAlchemy engine + session
 │       ├── models/
-│       │   ├── user.py           # User ORM model
-│       │   ├── inventory.py      # InventoryItem ORM model
-│       │   └── nutrition_log.py  # DailyLog + MealLog ORM models
+│       │   ├── user.py           # User ORM (includes Week 3 preference fields)
+│       │   ├── inventory.py      # InventoryItem ORM
+│       │   ├── nutrition_log.py  # DailyLog + MealLog ORM
+│       │   └── waste_log.py      # WasteLog ORM
 │       ├── schemas/
-│       │   ├── user.py           # Pydantic request/response schemas
+│       │   ├── user.py           # Pydantic schemas + Enum preferences
 │       │   ├── inventory.py
-│       │   └── nutrition_log.py  # MealLogCreate, NutritionLogResponse
+│       │   └── nutrition_log.py
 │       ├── routers/
 │       │   ├── profile.py        # POST / GET / PUT /profile
-│       │   ├── inventory.py      # Full CRUD + /inventory/urgent
+│       │   ├── inventory.py      # CRUD + /urgent
 │       │   ├── nutrition.py      # GET /nutrition-target
 │       │   ├── meal_plan.py      # GET /meal-plan/today
 │       │   ├── nutrition_log.py  # GET+POST /nutrition-log, DELETE /meal
-│       │   └── foods.py          # GET /foods, GET /foods/search
+│       │   ├── foods.py          # GET /foods, GET /foods/search
+│       │   ├── grocery_list.py   # GET /grocery-list/weekly
+│       │   └── waste_log.py      # POST /inventory/{id}/discard, GET /waste-log
 │       └── services/
 │           ├── nutrition_engine.py   # Mifflin-St Jeor BMR/TDEE/macros
-│           ├── expiration_engine.py  # expired/high/medium/low/unknown risk
-│           ├── meal_planner.py       # Macro-aware, dedup meal planner
-│           ├── unit_converter.py     # Mass unit cross-conversion (g/kg/lb/oz)
-│           └── food_database.py      # 40+ food nutrition database + search
+│           ├── expiration_engine.py  # Risk classification
+│           ├── meal_planner.py       # Template-based, macro-aware planner
+│           ├── meal_scorer.py        # 7-component scoring (0–100)
+│           ├── meal_templates.py     # 20 named templates (Chinese + Western)
+│           ├── unit_converter.py     # g/kg/lb/oz cross-conversion
+│           └── food_database.py      # 40+ food nutrition database
 └── frontend/
-    ├── .env.local.example       # Copy to .env.local to override API URL
     ├── package.json
     ├── tailwind.config.ts
     └── src/
         ├── app/
         │   ├── layout.tsx
-        │   ├── page.tsx          # Redirects to /dashboard
-        │   ├── dashboard/page.tsx
-        │   ├── profile/page.tsx
-        │   └── inventory/page.tsx
+        │   ├── page.tsx              # Redirects → /dashboard
+        │   ├── dashboard/page.tsx   # Hero · progress · meal plan · sidebar
+        │   ├── profile/page.tsx     # Metrics + preferences + targets
+        │   ├── inventory/page.tsx   # Cards (mobile) + table (desktop)
+        │   └── grocery-list/page.tsx
         ├── components/
-        │   └── Navbar.tsx
+        │   ├── Navbar.tsx
+        │   ├── Badge.tsx            # Colored pill badges
+        │   ├── ProgressBar.tsx      # Labeled progress bar
+        │   ├── EmptyState.tsx       # Empty state with icon
+        │   ├── AlertBanner.tsx      # Error / warning / success banners
+        │   ├── StatCard.tsx         # Metric display card
+        │   └── SectionCard.tsx      # Section wrapper with header
         └── lib/
-            └── api.ts            # Typed fetch wrappers for all endpoints
+            └── api.ts               # Typed fetch wrappers for all endpoints
 ```
 
 ---
@@ -151,60 +233,60 @@ NutriFridge AI/
 ## API Endpoint Summary
 
 ### Profile
-| Method | Path       | Description              |
-|--------|------------|--------------------------|
-| POST   | /profile   | Create user profile      |
-| GET    | /profile   | Get user profile         |
-| PUT    | /profile   | Update user profile      |
+| Method | Path     | Description          |
+|--------|----------|----------------------|
+| POST   | /profile | Create user profile  |
+| GET    | /profile | Get user profile     |
+| PUT    | /profile | Update user profile  |
 
 ### Nutrition
-| Method | Path              | Description                        |
-|--------|-------------------|------------------------------------|
-| GET    | /nutrition-target | Calculated daily calorie + macro targets |
+| Method | Path              | Description                          |
+|--------|-------------------|--------------------------------------|
+| GET    | /nutrition-target | Calculated calorie + macro targets   |
 
 ### Inventory
-| Method | Path                 | Description                      |
-|--------|----------------------|----------------------------------|
-| POST   | /inventory           | Add an inventory item            |
-| GET    | /inventory           | List all items (sorted by risk)  |
-| GET    | /inventory/urgent    | Items that are expired/high/medium risk |
-| GET    | /inventory/{id}      | Get a single item                |
-| PUT    | /inventory/{id}      | Update an item                   |
-| DELETE | /inventory/{id}      | Delete an item                   |
+| Method | Path                      | Description                     |
+|--------|---------------------------|---------------------------------|
+| POST   | /inventory                | Add an inventory item           |
+| GET    | /inventory                | List all items (sorted by risk) |
+| GET    | /inventory/urgent         | Expired/high/medium risk items  |
+| GET    | /inventory/{id}           | Get a single item               |
+| PUT    | /inventory/{id}           | Update an item                  |
+| DELETE | /inventory/{id}           | Delete an item                  |
+| POST   | /inventory/{id}/discard   | Discard item; log waste event   |
 
 ### Meal Plan
-| Method | Path             | Description                                       |
-|--------|------------------|---------------------------------------------------|
-| GET    | /meal-plan/today | Macro-aware one-day meal plan (respects today's log) |
+| Method | Path             | Description                                        |
+|--------|------------------|----------------------------------------------------|
+| GET    | /meal-plan/today | Scored one-day plan (respects today's log)         |
 
 ### Nutrition Log
-| Method | Path                        | Description                                      |
-|--------|-----------------------------|--------------------------------------------------|
-| GET    | /nutrition-log/today        | Today's consumed macros + list of logged meals   |
-| POST   | /nutrition-log/meal         | Log a meal; deducts inventory quantities         |
-| DELETE | /nutrition-log/meal/{id}    | Remove a logged meal; reverses macros            |
+| Method | Path                     | Description                               |
+|--------|--------------------------|-------------------------------------------|
+| GET    | /nutrition-log/today     | Today's consumed macros + logged meals    |
+| POST   | /nutrition-log/meal      | Log a meal; deducts inventory quantities  |
+| DELETE | /nutrition-log/meal/{id} | Remove a logged meal; reverses macros     |
 
 ### Foods
-| Method | Path               | Description                            |
-|--------|--------------------|----------------------------------------|
-| GET    | /foods             | Full built-in food database (40+ items) |
-| GET    | /foods/search?q=   | Search foods by name or alias          |
+| Method | Path             | Description                           |
+|--------|------------------|---------------------------------------|
+| GET    | /foods           | Full built-in food database (40+ items) |
+| GET    | /foods/search?q= | Search foods by name or alias         |
 
 ### Grocery List
-| Method | Path                    | Description                                      |
-|--------|-------------------------|--------------------------------------------------|
-| GET    | /grocery-list/weekly    | Personalised weekly shopping recommendations     |
+| Method | Path                  | Description                             |
+|--------|-----------------------|-----------------------------------------|
+| GET    | /grocery-list/weekly  | Personalised weekly shopping list       |
 
 ### Waste Log
-| Method | Path                        | Description                                  |
-|--------|-----------------------------|----------------------------------------------|
-| POST   | /inventory/{id}/discard     | Discard item; log waste event                |
-| GET    | /waste-log                  | List recent waste events (last 30)           |
+| Method | Path       | Description                              |
+|--------|------------|------------------------------------------|
+| GET    | /waste-log | Last 30 waste events                     |
 
 ### System
-| Method | Path    | Description      |
-|--------|---------|------------------|
-| GET    | /health | Health check     |
+| Method | Path    | Description  |
+|--------|---------|--------------|
+| GET    | /health | Health check |
 
 ---
 
@@ -217,179 +299,115 @@ NutriFridge AI/
 
 **TDEE** = BMR × activity multiplier (1.2 – 1.9)
 
-**Calorie goal:** TDEE − 400 (fat loss) | TDEE (maintenance) | TDEE + 300 (muscle gain)
+**Calorie goal:** TDEE − 400 (fat loss) · TDEE (maintenance) · TDEE + 300 (muscle gain)
 
 **Macros:** protein 1.5–2.0 g/kg, fat 25% of calories, carbs fill remaining
 
 ---
 
+## Meal Scoring
+
+Each candidate template is scored 0–100 before selection:
+
+| Component       | Max pts | Description                                        |
+|-----------------|---------|---------------------------------------------------|
+| Urgency         | 25      | Fraction of matched ingredients that are expiring |
+| Protein gap     | 20      | How well the meal covers remaining protein target  |
+| Calorie fit     | 15      | Whether meal fits neatly in remaining budget       |
+| Preference      | 25      | Cuisine + diet style match                         |
+| Cooking time    | 8       | Template fits cooking time preference              |
+| Variety         | 7       | Ingredient category diversity                      |
+| Dislike penalty | −25     | Applied if a disliked food is in the ingredients   |
+
+---
+
 ## Expiration Risk Levels
 
-| Risk    | Definition                        | Badge colour |
-|---------|-----------------------------------|--------------|
-| expired | best-before date has passed       | Red          |
-| high    | 0–2 days remaining                | Orange       |
-| medium  | 3–5 days remaining                | Yellow       |
-| low     | 6+ days remaining                 | Green        |
-| unknown | no best-before date set           | Grey         |
+| Risk    | Definition                   | Badge colour |
+|---------|------------------------------|--------------|
+| expired | best-before date has passed  | Red          |
+| high    | 0–2 days remaining           | Orange       |
+| medium  | 3–5 days remaining           | Yellow       |
+| low     | 6+ days remaining            | Green        |
+| unknown | no best-before date set      | Grey         |
 
 ---
 
-## Troubleshooting
+## QA Results
 
-**`ModuleNotFoundError: No module named 'fastapi'`**  
-You are not inside the virtual environment. Run `source venv/bin/activate` first.
-
-**`pydantic-core` build fails on Python 3.14**  
-The pinned versions in `requirements.txt` use `>=` ranges and will install the latest wheel. If you still see a build error, upgrade pip first: `pip install --upgrade pip` and retry.
-
-**Frontend shows "Backend is not reachable"**  
-The FastAPI server is not running. Start it with `uvicorn app.main:app --reload` from the `backend/` folder.
-
-**Frontend shows "No profile found" after seeding**  
-Make sure you ran `python3 seed.py` from inside the `backend/` folder with the venv active, and that there are no errors in the output.
-
-**Port already in use**  
-`uvicorn app.main:app --reload --port 8001` — then set `NEXT_PUBLIC_API_URL=http://localhost:8001` in `frontend/.env.local`.
-
-**CORS error in browser console**  
-The backend allows `http://localhost:3000` by default. If your frontend is on a different port, edit `allow_origins` in `backend/app/main.py`.
-
----
-
-## Week 1 MVP Features
-
-1. **User Profile** — height, weight, age, sex, activity level, goal
-2. **Nutrition Target Engine** — Mifflin-St Jeor BMR → TDEE → calories, protein, carbs, fat
-3. **Inventory System** — track items across fridge, freezer, and pantry with expiration dates
-4. **Expiration Risk Engine** — expired / high / medium / low / unknown classification
-5. **Rule-based Meal Plan** — one-day plan prioritising ingredients that expire soonest
-6. **Frontend UI** — Dashboard, Profile, and Inventory pages with mobile-friendly layout
-
----
-
-## Week 2 Features
-
-### Daily Nutrition Logging
-Every meal recommended on the dashboard has a **Mark as Eaten** button. Clicking it:
-1. Logs the meal to today's `DailyLog` with its calorie and macro values.
-2. Deducts the ingredient quantities from your inventory (unit-aware — grams, kg, lb, oz all interoperate).
-3. Refreshes the dashboard — progress bars fill up, the meal moves to **Meals Eaten Today**, and the meal plan recalculates against your remaining targets.
-
-To manually delete a logged meal, click the trash icon next to it in the **Meals Eaten Today** section. Macros are reversed; inventory is **not** restored.
-
-### Food Search & Nutrition Autofill (Inventory Page)
-When you type a food name in the Add Item form, a dropdown appears with up to 6 matching suggestions from the built-in food database (40+ foods). Selecting a suggestion:
-- Fills the name field.
-- Sets the category automatically.
-- Populates all four nutrition fields (Cal / P / C / F per 100g).
-
-You can still override any field after autofill. The backend also autofills nutrition on `POST /inventory` if the item name matches a known food and no nutrition data was provided manually.
-
-### Improved Meal Planner
-- Ingredients are deduplicated across all meals in the same plan.
-- Each meal card shows which macro gaps it helps fill (`macro_gap_helped`).
-- Meals that use soon-to-expire ingredients are flagged with a warning chip.
-- A `recommendation_summary` string at the top of the plan explains the priority logic in plain English.
-
-### Backend QA Script
 ```bash
-cd backend
-source venv/bin/activate
-python3 qa_check.py
+cd backend && source venv/bin/activate && python3 qa_check.py
 ```
-Runs 9 check groups (health, profile, foods, inventory, urgent sorting, calorie math, meal plan, mark-as-eaten macro update, lb→g deduction) and prints `PASS` / `FAIL` for each. Exits non-zero on any failure.
 
----
-
-## How to Use the Nutrition Log
-
-1. Start the backend and seed data (see Quick Start above).
-2. Open the dashboard at **http://localhost:3000/dashboard**.
-3. In the **Recommended Meal Plan** section, click **Mark as Eaten** on any meal.
-4. The **Daily Nutrition Progress** cards update immediately.
-5. The marked meal appears in **Meals Eaten Today** with a delete icon.
-6. The meal plan regenerates against your remaining calorie/macro budget.
-
----
-
-## Week 3 Features
-
-### User Preferences
-The Profile page now has a **Food Preferences** section:
-- **Cuisine Preference** — Chinese / Western / Mixed / No Preference. Meal scoring favours templates matching your preferred cuisine.
-- **Cooking Time Preference** — Quick (≤15 min) / Normal (≤30 min) / Flexible. Templates exceeding your time limit receive a lower score.
-- **Diet Style** — High Protein / Balanced / Low Carb / Low Fat / No Preference. Influences both meal scoring and grocery recommendations.
-- **Preferred & Disliked Foods** — Comma-separated lists. Disliked ingredients trigger a score penalty; disliked items are skipped in grocery suggestions.
-
-### Meal Templates & Scoring
-The meal planner now uses a library of **20 named templates** (10 Chinese, 10 Western) instead of dynamically generated names. Each template includes:
-- Name, cuisine, meal type, cooking time, and step-by-step instructions.
-- Tags (`high_protein`, `low_carb`, `low_fat`, `balanced`, `quick`) used for scoring.
-
-The **meal scoring engine** ranks each template (0–100) on:
-| Component | Max pts | Description |
-|-----------|---------|-------------|
-| Urgency   | 25 | Fraction of matched ingredients that are expiring |
-| Protein gap | 20 | How well the meal covers your remaining protein target |
-| Calorie fit | 15 | Whether the meal fits neatly in your remaining calorie budget |
-| Preference  | 25 | Cuisine + diet style match |
-| Cooking time | 8 | Template fits your time preference |
-| Variety | 7 | Ingredient category diversity |
-| Dislike penalty | −25 | Applied if a disliked food is in the ingredients |
-
-Each meal card on the dashboard now shows a match-score bar, cuisine flag, cooking time, tags, and expandable step-by-step instructions.
-
-### Weekly Grocery List
-New endpoint `GET /grocery-list/weekly` and a new `/grocery-list` page analyse:
-- Your current inventory (quantity, expiry risk, categories present)
-- Daily nutrition targets and today's consumed macros
-- Cuisine + diet style preferences
-
-Returns:
-- **Buy this week** — prioritised list of staples you're missing, with `high / medium / low` priority tags
-- **Use before buying more** — items that are urgent or at medium risk; no point restocking yet
-- **Nutrition gap analysis** — plain-English summary of your protein/calorie situation
-- **Inventory snapshot** — counts by risk level
-
-### Waste Tracking
-Every inventory item now has a **Discard** button in the inventory table. Discarding:
-1. Prompts for a reason (Expired / Too much / Changed mind / Other).
-2. Records a `WasteLog` entry with item name, quantity, unit, reason, and estimated calories wasted.
-3. Removes or reduces the inventory item.
-
-The Dashboard shows a **Recent Food Waste** section with a running tally of calories discarded, helping you notice patterns and waste less.
-
-**Endpoints:**
-- `POST /inventory/{id}/discard` — body: `{"reason": "expired", "quantity": null}` (null = discard all)
-- `GET /waste-log` — returns the last 30 waste events
-
-### Updated QA Script
-`backend/qa_check.py` now covers **13 check groups / 75 assertions** including preference fields, meal scoring, instructions, grocery list, discard, and waste log.
+**75/75 assertions PASS** across 13 check groups:
+1. Health check
+2. Profile CRUD
+3. Food database search
+4. Inventory CRUD + urgent sorting
+5. Calorie math (Mifflin-St Jeor verification)
+6. Meal plan generation
+7. Mark-as-eaten macro update
+8. lb → g inventory deduction
+9. Unit converter
+10. Preference fields persisted correctly
+11. Meal scoring (score 0–100, breakdown present)
+12. Grocery list structure and priority
+13. Discard flow + waste log
 
 ---
 
 ## Known Limitations
 
-- **Single user only** — the backend assumes one user (the first profile in the database). Multi-user support requires authentication.
-- **Inventory is not restored on meal deletion** — deleting a logged meal reverses the macros from today's totals but does not add the ingredient quantities back to inventory.
-- **Nutrition data is estimated** — calories and macros shown for meal-plan meals are based on the per-100g values in the food database and an assumed 150g serving, not a precise recipe.
-- **Discrete units are not cross-convertible** — if an inventory item is stored in "cups" and a meal deducts in "count", the deduction is skipped with a warning rather than silently failing or guessing.
-- **Log resets at midnight** — each `GET /nutrition-log/today` or `POST /nutrition-log/meal` call uses `date.today()` server-side, so meals logged before midnight are part of yesterday's log.
-- **No persistent meal history** — only today's log is surfaced in the UI. Past logs exist in the database but have no frontend view yet.
-- **Waste log does not restore inventory** — the discard flow removes the item from inventory but `DELETE /inventory/{id}` (the hard-delete button) does not create a waste log entry.
-- **Meal templates are fixed** — the 20 templates cannot be added or edited through the UI. Extending the library requires editing `backend/app/services/meal_templates.py`.
-- **Grocery list is weekly guidance, not a shopping cart** — quantities and brands are not specified; the list is a high-level recommendation based on your preferences and inventory state.
+- **Single user** — assumes one profile row; multi-user requires authentication
+- **Inventory not restored on meal deletion** — deleting a logged meal reverses macros but not quantities
+- **Nutrition data is estimated** — based on per-100g values with an assumed 150g serving
+- **Discrete units not cross-convertible** — "cups" vs "count" deduction is skipped with a warning
+- **Log resets at midnight** — uses `date.today()` server-side
+- **No persistent meal history UI** — past logs exist in the DB but have no frontend view
+- **Waste log does not restore inventory** — discard removes the item; hard-delete does not log waste
+- **Meal templates are fixed** — 20 templates cannot be edited through the UI
+- **Grocery list is guidance, not a cart** — quantities and brands are not specified
 
 ---
 
 ## Future Roadmap
 
-- **LLM recipe generation** — replace rule-based planner with Claude / GPT for creative, personalised recipes
+- **LLM recipe generation** — replace rule-based planner with Claude for personalised recipes
 - **Receipt OCR** — scan grocery receipts to auto-populate inventory
-- **Barcode scanning** — use phone camera to identify packaged food
+- **Barcode scanning** — phone camera to identify packaged food
 - **Photo-based fridge recognition** — AI vision to detect items from a fridge photo
-- **Automatic grocery list** — suggest what to buy based on depleted inventory and upcoming meal plans
-- **Nutrition history tracking** — log daily intake and visualise macro trends over time
-- **User authentication** — multi-user support with secure login / signup
-- **Mobile app** — React Native version with camera and notification integrations
+- **Nutrition history charts** — visualise macro trends over time
+- **User authentication** — multi-user support with secure login
+- **Mobile app** — React Native version with camera and push notifications
+
+---
+
+## Troubleshooting
+
+**`ModuleNotFoundError: No module named 'fastapi'`**
+You are not inside the virtual environment. Run `source venv/bin/activate` first.
+
+**Frontend shows "Backend is not reachable"**
+The FastAPI server is not running. Start with `uvicorn app.main:app --reload` from `backend/`.
+
+**Frontend shows "No profile found" after seeding**
+Run `python3 seed.py` from inside `backend/` with the venv active.
+
+**Port already in use**
+`uvicorn app.main:app --reload --port 8001` — then set `NEXT_PUBLIC_API_URL=http://localhost:8001` in `frontend/.env.local`.
+
+**CORS error in browser console**
+The backend allows `http://localhost:3000` by default. If your frontend is on a different port, edit `allow_origins` in `backend/app/main.py`.
+
+---
+
+## Resume Bullets
+
+> Copy-paste into a resume or portfolio description:
+
+- Built a **full-stack nutrition + inventory management app** with Next.js 14 (TypeScript, TailwindCSS) frontend and FastAPI + SQLAlchemy backend, deployed locally with SQLite
+- Implemented a **rule-based meal scoring engine** (7 components, 0–100 scale) that prioritises expiring ingredients, respects macro targets, and accounts for user cuisine and diet preferences
+- Designed and built **5 REST API modules** (profile, inventory, nutrition log, meal plan, grocery list) with Pydantic v2 validation and full CRUD
+- Created a **waste tracking system** with calorie-wasted estimation and dashboard visualisation to encourage mindful consumption
+- Achieved **75/75 QA assertions** across 13 check groups with a custom backend QA script covering unit conversion, macro math, meal scoring, and preference persistence
+- Engineered a **food database with 40+ entries and fuzzy search** that auto-fills nutrition data when items are added to inventory

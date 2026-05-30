@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const links = [
+const LINKS = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/profile", label: "Profile" },
+  { href: "/profile",   label: "Profile" },
   { href: "/inventory", label: "Inventory" },
   { href: "/grocery-list", label: "Grocery List" },
 ];
@@ -14,27 +14,35 @@ export default function Navbar() {
   const pathname = usePathname();
 
   return (
-    <nav className="bg-white border-b border-gray-200 shadow-sm">
-      <div className="max-w-6xl mx-auto px-4 py-4 flex items-center justify-between">
-        <Link href="/dashboard" className="text-xl font-bold text-green-600 tracking-tight">
-          NutriFridge AI
+    <header className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+      <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
+        <Link href="/dashboard" className="flex items-center gap-2 shrink-0">
+          <span className="text-xl select-none">🥬</span>
+          <span className="font-bold text-gray-900 text-lg leading-none">
+            NutriFridge{" "}
+            <span className="text-green-600">AI</span>
+          </span>
         </Link>
-        <div className="flex gap-6">
-          {links.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`text-sm font-medium transition-colors ${
-                pathname === link.href
-                  ? "text-green-600 border-b-2 border-green-600 pb-0.5"
-                  : "text-gray-500 hover:text-green-600"
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
-        </div>
+
+        <nav className="flex items-center gap-1">
+          {LINKS.map((link) => {
+            const active = pathname === link.href;
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-green-50 text-green-700"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+        </nav>
       </div>
-    </nav>
+    </header>
   );
 }

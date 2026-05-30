@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { fetchInventory, createInventoryItem, deleteInventoryItem, discardInventoryItem, searchFoods } from "@/lib/api";
+import {
+  fetchInventory,
+  createInventoryItem,
+  deleteInventoryItem,
+  discardInventoryItem,
+  searchFoods,
+} from "@/lib/api";
 
 type InventoryItem = {
   id: number;
@@ -33,19 +39,44 @@ type FoodSuggestion = {
 
 type DiscardState = { itemId: number; reason: string; busy: boolean } | null;
 
+// ── Style maps ────────────────────────────────────────────────────────────
+
 const RISK_STYLES: Record<string, string> = {
   expired: "bg-red-100 text-red-700 border border-red-200",
   high:    "bg-orange-100 text-orange-700 border border-orange-200",
   medium:  "bg-yellow-100 text-yellow-700 border border-yellow-200",
   low:     "bg-green-100 text-green-700 border border-green-200",
-  unknown: "bg-gray-100 text-gray-600 border border-gray-200",
+  unknown: "bg-gray-100 text-gray-500 border border-gray-200",
+};
+
+const ZONE_STYLES: Record<string, string> = {
+  fridge:  "bg-blue-100 text-blue-700 border border-blue-200",
+  freezer: "bg-sky-100 text-sky-700 border border-sky-200",
+  pantry:  "bg-amber-100 text-amber-700 border border-amber-200",
+};
+
+const ZONE_EMOJI: Record<string, string> = {
+  fridge:  "🧊",
+  freezer: "❄️",
+  pantry:  "🗄️",
+};
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  meat:      "🥩",
+  vegetable: "🥦",
+  fruit:     "🍎",
+  dairy:     "🥛",
+  grain:     "🌾",
+  snack:     "🥜",
+  condiment: "🫙",
+  other:     "🍳",
 };
 
 const DISCARD_REASONS = [
-  { value: "expired",       label: "Expired / Gone bad" },
-  { value: "too_much",      label: "Too much / Cannot finish" },
-  { value: "did_not_want",  label: "Changed mind" },
-  { value: "other",         label: "Other" },
+  { value: "expired",      label: "Expired / Gone bad" },
+  { value: "too_much",     label: "Too much / Cannot finish" },
+  { value: "did_not_want", label: "Changed mind" },
+  { value: "other",        label: "Other" },
 ];
 
 const defaultForm = {
@@ -61,6 +92,8 @@ const defaultForm = {
   fat_per_100g: "",
   notes: "",
 };
+
+// ── Page ──────────────────────────────────────────────────────────────────
 
 export default function InventoryPage() {
   const [items, setItems] = useState<InventoryItem[]>([]);
@@ -121,7 +154,9 @@ export default function InventoryPage() {
     setAutofilled(true);
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
@@ -172,18 +207,28 @@ export default function InventoryPage() {
     }
   };
 
+  // Stats by zone
+  const fridgeCount   = items.filter((i) => i.zone === "fridge").length;
+  const freezerCount  = items.filter((i) => i.zone === "freezer").length;
+  const pantryCount   = items.filter((i) => i.zone === "pantry").length;
+  const urgentCount   = items.filter((i) => ["expired", "high"].includes(i.expiration_risk)).length;
+
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      {/* ── Header ────────────────────────────────────────────────────── */}
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
-          <p className="text-gray-500 mt-1">
-            {items.length} item{items.length !== 1 ? "s" : ""} across fridge, freezer &amp; pantry
+          <p className="text-gray-500 text-sm mt-1">
+            {items.length} item{items.length !== 1 ? "s" : ""} · {fridgeCount} fridge · {freezerCount} freezer · {pantryCount} pantry
+            {urgentCount > 0 && (
+              <span className="ml-2 text-red-500 font-medium">· {urgentCount} urgent</span>
+            )}
           </p>
         </div>
         <button
           onClick={() => { setShowForm((v) => !v); setError(null); }}
-          className="bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+          className="shrink-0 bg-green-600 hover:bg-green-700 text-white font-semibold px-4 py-2 rounded-xl text-sm transition-colors shadow-sm"
         >
           {showForm ? "Cancel" : "+ Add Item"}
         </button>
@@ -191,26 +236,34 @@ export default function InventoryPage() {
 
       {/* ── Add Item Form ──────────────────────────────────────────────── */}
       {showForm && (
-        <form onSubmit={handleAdd} className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 space-y-4">
+        <form onSubmit={handleAdd} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-5">
           <h2 className="font-semibold text-gray-700">New Inventory Item</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="relative" ref={suggestionsRef}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
+            {/* Name + autofill */}
+            <div className="relative md:col-span-2" ref={suggestionsRef}>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Name <span className="text-red-400">*</span>
+              </label>
               <input
                 name="name" value={form.name} onChange={handleNameChange}
                 required autoComplete="off"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                placeholder="Type to search food database…"
+                placeholder="Type to search the food database…"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
               {autofilled && (
-                <span className="text-xs text-green-600 mt-0.5 block">✓ Nutrition auto-filled from database</span>
+                <p className="text-xs text-green-600 mt-1.5 flex items-center gap-1">
+                  <span>✓</span> Nutrition auto-filled — edit any field if needed
+                </p>
               )}
               {showSuggestions && suggestions.length > 0 && (
-                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden">
                   {suggestions.map((food) => (
-                    <button key={food.id} type="button" onClick={() => handleSelectSuggestion(food)}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-green-50 flex items-center justify-between gap-4 border-b border-gray-50 last:border-0">
+                    <button
+                      key={food.id} type="button"
+                      onClick={() => handleSelectSuggestion(food)}
+                      className="w-full text-left px-4 py-2.5 text-sm hover:bg-green-50 flex items-center justify-between gap-4 border-b border-gray-50 last:border-0"
+                    >
                       <span className="font-medium text-gray-900 capitalize">{food.name}</span>
                       <span className="text-xs text-gray-400 shrink-0">
                         {food.calories_per_100g} kcal · {food.protein_per_100g}g P · {food.category}
@@ -221,54 +274,88 @@ export default function InventoryPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            {/* Quantity + Unit */}
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Quantity *</label>
-                <input name="quantity" type="number" step="any" value={form.quantity} onChange={handleChange} required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="2" />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Quantity <span className="text-red-400">*</span>
+                </label>
+                <input
+                  name="quantity" type="number" step="any" value={form.quantity}
+                  onChange={handleChange} required placeholder="e.g. 500"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Unit *</label>
-                <input name="unit" value={form.unit} onChange={handleChange} required
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                  placeholder="g / lb / cups" />
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Unit <span className="text-red-400">*</span>
+                </label>
+                <input
+                  name="unit" value={form.unit} onChange={handleChange} required
+                  placeholder="g / lb / cups"
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
               </div>
             </div>
 
+            {/* Zone */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Zone *</label>
-              <select name="zone" value={form.zone} onChange={handleChange}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Zone <span className="text-red-400">*</span>
+              </label>
+              <select
+                name="zone" value={form.zone} onChange={handleChange}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+              >
                 {["fridge", "freezer", "pantry"].map((z) => (
-                  <option key={z} value={z}>{z.charAt(0).toUpperCase() + z.slice(1)}</option>
+                  <option key={z} value={z}>{ZONE_EMOJI[z]} {z.charAt(0).toUpperCase() + z.slice(1)}</option>
                 ))}
               </select>
             </div>
 
+            {/* Category */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Category *</label>
-              <select name="category" value={form.category} onChange={handleChange}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500">
-                {["meat","vegetable","fruit","dairy","grain","snack","condiment","other"].map((c) => (
-                  <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Category <span className="text-red-400">*</span>
+              </label>
+              <select
+                name="category" value={form.category} onChange={handleChange}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+              >
+                {["meat", "vegetable", "fruit", "dairy", "grain", "snack", "condiment", "other"].map((c) => (
+                  <option key={c} value={c}>{CATEGORY_EMOJI[c]} {c.charAt(0).toUpperCase() + c.slice(1)}</option>
                 ))}
               </select>
             </div>
 
+            {/* Best Before */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Best Before Date</label>
-              <input name="best_before_date" type="date" value={form.best_before_date} onChange={handleChange}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Best Before Date</label>
+              <input
+                name="best_before_date" type="date" value={form.best_before_date}
+                onChange={handleChange}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes</label>
+              <input
+                name="notes" value={form.notes} onChange={handleChange}
+                placeholder="Optional notes"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
             </div>
           </div>
 
+          {/* Nutrition fields */}
           <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">
               Nutrition per 100g
               {autofilled
-                ? <span className="ml-2 text-green-500 font-normal normal-case">(auto-filled — edit if needed)</span>
-                : <span className="ml-2 font-normal normal-case text-gray-400">(optional — auto-filled on name match)</span>}
+                ? <span className="ml-2 text-green-500 font-normal normal-case">(auto-filled)</span>
+                : <span className="ml-2 font-normal normal-case">(optional — auto-filled on name match)</span>}
             </p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {[
@@ -278,84 +365,203 @@ export default function InventoryPage() {
                 { name: "fat_per_100g",      label: "Fat (g)" },
               ].map((f) => (
                 <div key={f.name}>
-                  <label className="block text-xs text-gray-600 mb-1">{f.label}</label>
-                  <input name={f.name} type="number" step="any"
+                  <label className="block text-xs text-gray-500 mb-1.5">{f.label}</label>
+                  <input
+                    name={f.name} type="number" step="any"
                     value={form[f.name as keyof typeof form]} onChange={handleChange}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-                    placeholder="0" />
+                    placeholder="0"
+                    className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  />
                 </div>
               ))}
             </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Notes</label>
-            <input name="notes" value={form.notes} onChange={handleChange}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-              placeholder="Optional notes" />
-          </div>
-
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-700">{error}</div>
+            <div className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+              {error}
+            </div>
           )}
 
-          <button type="submit" disabled={saving}
-            className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold px-6 py-2.5 rounded-lg text-sm transition-colors">
-            {saving ? "Adding…" : "Add Item"}
-          </button>
+          <div className="flex gap-3">
+            <button
+              type="submit" disabled={saving}
+              className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold px-6 py-2.5 rounded-xl text-sm transition-colors shadow-sm"
+            >
+              {saving ? "Adding…" : "Add to Inventory"}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setShowForm(false); setForm(defaultForm); setError(null); setAutofilled(false); }}
+              className="px-6 py-2.5 rounded-xl text-sm font-medium text-gray-500 hover:bg-gray-100 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       )}
 
-      {/* ── Inventory Table ────────────────────────────────────────────── */}
-      {items.length === 0 ? (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-8 text-center text-gray-400">
-          No items yet. Add your first ingredient above.
+      {/* ── Inventory: Empty State ─────────────────────────────────────── */}
+      {items.length === 0 && (
+        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
+          <span className="text-5xl block mb-4">🧺</span>
+          <h3 className="font-semibold text-gray-700 mb-2">Your inventory is empty</h3>
+          <p className="text-sm text-gray-400 mb-5">
+            Add ingredients to start tracking expiration dates and getting meal recommendations.
+          </p>
+          <button
+            onClick={() => setShowForm(true)}
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold px-5 py-2 rounded-xl text-sm transition-colors"
+          >
+            + Add First Item
+          </button>
         </div>
-      ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-x-auto">
+      )}
+
+      {/* ── Inventory: Mobile Cards ────────────────────────────────────── */}
+      {items.length > 0 && (
+        <div className="md:hidden space-y-3">
+          {items.map((item) => (
+            <div key={item.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="font-semibold text-gray-900">{item.name}</h3>
+                  {item.notes && <p className="text-xs text-gray-400 mt-0.5">{item.notes}</p>}
+                </div>
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${RISK_STYLES[item.expiration_risk] ?? RISK_STYLES.unknown}`}>
+                  {item.expiration_risk}
+                </span>
+              </div>
+
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ZONE_STYLES[item.zone] ?? "bg-gray-100 text-gray-600"}`}>
+                  {ZONE_EMOJI[item.zone]} {item.zone}
+                </span>
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-600">
+                  {CATEGORY_EMOJI[item.category] ?? "•"} {item.category}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm mb-3">
+                <div>
+                  <span className="text-xs text-gray-400 block">Quantity</span>
+                  <span className="text-gray-700">{item.quantity} {item.unit}</span>
+                </div>
+                <div>
+                  <span className="text-xs text-gray-400 block">Best Before</span>
+                  <span className="text-gray-700">{item.best_before_date ?? "—"}</span>
+                </div>
+                {item.calories_per_100g != null && (
+                  <div>
+                    <span className="text-xs text-gray-400 block">Cal/100g</span>
+                    <span className="text-gray-700">{item.calories_per_100g}</span>
+                  </div>
+                )}
+                {item.protein_per_100g != null && (
+                  <div>
+                    <span className="text-xs text-gray-400 block">Protein/100g</span>
+                    <span className="text-gray-700">{item.protein_per_100g}g</span>
+                  </div>
+                )}
+              </div>
+
+              {discarding?.itemId === item.id ? (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    value={discarding.reason}
+                    onChange={(e) => setDiscarding((prev) => prev ? { ...prev, reason: e.target.value } : prev)}
+                    className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none bg-white"
+                  >
+                    {DISCARD_REASONS.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={handleDiscardConfirm}
+                    disabled={discarding.busy}
+                    className="text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
+                  >
+                    {discarding.busy ? "…" : "Confirm Discard"}
+                  </button>
+                  <button onClick={() => setDiscarding(null)} className="text-xs text-gray-400 hover:text-gray-600 px-2">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setDiscarding({ itemId: item.id, reason: "expired", busy: false })}
+                    className="text-xs text-orange-500 hover:text-orange-700 font-semibold border border-orange-200 hover:border-orange-300 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    Discard (log waste)
+                  </button>
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="text-xs text-red-400 hover:text-red-600 font-semibold border border-red-100 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Inventory: Desktop Table ───────────────────────────────────── */}
+      {items.length > 0 && (
+        <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-gray-50 text-gray-500 text-xs uppercase tracking-wide">
-              <tr>
+            <thead className="bg-gray-50 border-b border-gray-100">
+              <tr className="text-xs font-semibold uppercase tracking-wider text-gray-400">
                 <th className="px-4 py-3 text-left">Item</th>
                 <th className="px-4 py-3 text-left">Zone</th>
                 <th className="px-4 py-3 text-left">Category</th>
                 <th className="px-4 py-3 text-left">Qty</th>
                 <th className="px-4 py-3 text-left">Best Before</th>
                 <th className="px-4 py-3 text-left">Risk</th>
-                <th className="px-4 py-3 text-right">Cal</th>
-                <th className="px-4 py-3 text-right">P</th>
-                <th className="px-4 py-3 text-right">C</th>
-                <th className="px-4 py-3 text-right">F</th>
+                <th className="px-4 py-3 text-center">Cal</th>
+                <th className="px-4 py-3 text-center">P</th>
+                <th className="px-4 py-3 text-center">C</th>
+                <th className="px-4 py-3 text-center">F</th>
                 <th className="px-4 py-3 text-left">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {items.map((item) => (
-                <tr key={item.id} className="hover:bg-gray-50">
-                  <td className="px-4 py-3 font-medium text-gray-900">
-                    {item.name}
-                    {item.notes && <span className="ml-1 text-xs text-gray-400">({item.notes})</span>}
+                <tr key={item.id} className="hover:bg-gray-50 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-gray-900">{item.name}</p>
+                    {item.notes && <p className="text-xs text-gray-400">{item.notes}</p>}
                   </td>
-                  <td className="px-4 py-3 text-gray-500 capitalize">{item.zone}</td>
-                  <td className="px-4 py-3 text-gray-500 capitalize">{item.category}</td>
-                  <td className="px-4 py-3 text-gray-500">{item.quantity} {item.unit}</td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${ZONE_STYLES[item.zone] ?? "bg-gray-100 text-gray-500"}`}>
+                      {ZONE_EMOJI[item.zone]} {item.zone}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="text-xs text-gray-500 capitalize">
+                      {CATEGORY_EMOJI[item.category] ?? "•"} {item.category}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-gray-600">{item.quantity} {item.unit}</td>
                   <td className="px-4 py-3 text-gray-500">{item.best_before_date ?? "—"}</td>
                   <td className="px-4 py-3">
                     <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RISK_STYLES[item.expiration_risk] ?? RISK_STYLES.unknown}`}>
                       {item.expiration_risk}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-right text-gray-500">{item.calories_per_100g ?? "—"}</td>
-                  <td className="px-4 py-3 text-right text-gray-500">{item.protein_per_100g ?? "—"}</td>
-                  <td className="px-4 py-3 text-right text-gray-500">{item.carbs_per_100g ?? "—"}</td>
-                  <td className="px-4 py-3 text-right text-gray-500">{item.fat_per_100g ?? "—"}</td>
+                  <td className="px-4 py-3 text-center text-gray-500">{item.calories_per_100g ?? "—"}</td>
+                  <td className="px-4 py-3 text-center text-gray-500">{item.protein_per_100g ?? "—"}</td>
+                  <td className="px-4 py-3 text-center text-gray-500">{item.carbs_per_100g ?? "—"}</td>
+                  <td className="px-4 py-3 text-center text-gray-500">{item.fat_per_100g ?? "—"}</td>
                   <td className="px-4 py-3">
                     {discarding?.itemId === item.id ? (
-                      <div className="flex items-center gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap min-w-[220px]">
                         <select
                           value={discarding.reason}
                           onChange={(e) => setDiscarding((prev) => prev ? { ...prev, reason: e.target.value } : prev)}
-                          className="text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none"
+                          className="text-xs border border-gray-200 rounded-lg px-2 py-1 focus:outline-none bg-white"
                         >
                           {DISCARD_REASONS.map((r) => (
                             <option key={r.value} value={r.value}>{r.label}</option>
@@ -364,14 +570,11 @@ export default function InventoryPage() {
                         <button
                           onClick={handleDiscardConfirm}
                           disabled={discarding.busy}
-                          className="text-xs bg-orange-500 hover:bg-orange-600 text-white font-medium px-2 py-1 rounded transition-colors disabled:opacity-50"
+                          className="text-xs bg-orange-500 hover:bg-orange-600 text-white font-semibold px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50"
                         >
                           {discarding.busy ? "…" : "Confirm"}
                         </button>
-                        <button
-                          onClick={() => setDiscarding(null)}
-                          className="text-xs text-gray-400 hover:text-gray-600"
-                        >
+                        <button onClick={() => setDiscarding(null)} className="text-xs text-gray-400 hover:text-gray-600">
                           Cancel
                         </button>
                       </div>
@@ -379,13 +582,13 @@ export default function InventoryPage() {
                       <div className="flex items-center gap-3">
                         <button
                           onClick={() => setDiscarding({ itemId: item.id, reason: "expired", busy: false })}
-                          className="text-xs text-orange-500 hover:text-orange-700 font-medium transition-colors"
+                          className="text-xs text-orange-500 hover:text-orange-700 font-semibold transition-colors"
                         >
                           Discard
                         </button>
                         <button
                           onClick={() => handleDelete(item.id)}
-                          className="text-xs text-red-400 hover:text-red-600 font-medium transition-colors"
+                          className="text-xs text-red-400 hover:text-red-600 font-semibold transition-colors"
                         >
                           Delete
                         </button>
@@ -396,8 +599,10 @@ export default function InventoryPage() {
               ))}
             </tbody>
           </table>
-          <div className="px-4 py-2 bg-gray-50 text-xs text-gray-400 border-t border-gray-100">
-            Cal / P / C / F columns show values per 100g &nbsp;·&nbsp; Discard records waste events; Delete permanently removes without logging.
+          <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
+            Cal / P / C / F are per 100g &nbsp;·&nbsp;
+            <span className="text-orange-500">Discard</span> logs a waste event &nbsp;·&nbsp;
+            <span className="text-red-400">Delete</span> removes permanently without logging
           </div>
         </div>
       )}

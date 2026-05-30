@@ -7,7 +7,7 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "NutriFridge AI",
-  description: "Personalized nutrition + refrigerator inventory assistant",
+  description: "Smart fridge management meets personalized nutrition — track what you have, eat what you need.",
 };
 
 export default function RootLayout({
