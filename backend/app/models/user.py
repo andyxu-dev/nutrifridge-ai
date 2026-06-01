@@ -21,3 +21,13 @@ class User(Base):
     diet_style = Column(String, nullable=True)                # high_protein / balanced / low_carb / low_fat / no_preference
     disliked_foods = Column(Text, nullable=True)              # JSON list
     preferred_foods = Column(Text, nullable=True)             # JSON list
+
+    # Week 4 — health constraint fields
+    health_conditions = Column(Text, nullable=True)     # JSON list of condition strings
+    allergies = Column(Text, nullable=True)             # JSON list of food allergens
+    strict_avoid_foods = Column(Text, nullable=True)    # JSON list of hard-excluded foods
+    macro_strategy = Column(String, nullable=True)      # standard / high_protein / moderate_carb / low_carb / low_fat / conservative_surplus / custom
+    custom_calorie_target = Column(Float, nullable=True)
+    custom_protein_g = Column(Float, nullable=True)
+    custom_carbs_g = Column(Float, nullable=True)
+    custom_fat_g = Column(Float, nullable=True)

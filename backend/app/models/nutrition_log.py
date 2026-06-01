@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, Float, String, Date, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Float, String, Text, Date, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -32,6 +32,8 @@ class MealLog(Base):
     carbs_g = Column(Float, nullable=False)
     fat_g = Column(Float, nullable=False)
     ingredients_used = Column(String, nullable=True)  # JSON text
+    source = Column(String, default="recommended", nullable=True)  # recommended / manual
+    notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
 
     daily_log = relationship("DailyLog", back_populates="meal_logs")

@@ -45,6 +45,16 @@ class DietStyleEnum(str, Enum):
     no_preference = "no_preference"
 
 
+class MacroStrategyEnum(str, Enum):
+    standard = "standard"
+    high_protein = "high_protein"
+    moderate_carb = "moderate_carb"
+    low_carb = "low_carb"
+    low_fat = "low_fat"
+    conservative_surplus = "conservative_surplus"
+    custom = "custom"
+
+
 class UserBase(BaseModel):
     name: str
     height_cm: float
@@ -54,11 +64,23 @@ class UserBase(BaseModel):
     activity_level: ActivityLevelEnum
     goal: GoalEnum
     dietary_preference: Optional[str] = None
+
+    # Week 3 preferences
     cuisine_preference: Optional[CuisinePreferenceEnum] = None
     cooking_time_preference: Optional[CookingTimePreferenceEnum] = None
     diet_style: Optional[DietStyleEnum] = None
     disliked_foods: Optional[List[str]] = None
     preferred_foods: Optional[List[str]] = None
+
+    # Week 4 health constraints
+    health_conditions: Optional[List[str]] = None
+    allergies: Optional[List[str]] = None
+    strict_avoid_foods: Optional[List[str]] = None
+    macro_strategy: Optional[MacroStrategyEnum] = None
+    custom_calorie_target: Optional[float] = None
+    custom_protein_g: Optional[float] = None
+    custom_carbs_g: Optional[float] = None
+    custom_fat_g: Optional[float] = None
 
 
 class UserCreate(UserBase):
@@ -69,10 +91,19 @@ class UserUpdate(UserBase):
     pass
 
 
+_JSON_LIST_FIELDS = (
+    "disliked_foods",
+    "preferred_foods",
+    "health_conditions",
+    "allergies",
+    "strict_avoid_foods",
+)
+
+
 class UserResponse(UserBase):
     id: int
 
-    @field_validator("disliked_foods", "preferred_foods", mode="before")
+    @field_validator(*_JSON_LIST_FIELDS, mode="before")
     @classmethod
     def parse_json_list(cls, v):
         if v is None:

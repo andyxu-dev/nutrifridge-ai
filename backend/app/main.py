@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 
 from app.database import engine, Base
 
@@ -14,10 +15,38 @@ from app.routers import grocery_list, waste_log
 
 Base.metadata.create_all(bind=engine)
 
+
+def _migrate_db() -> None:
+    """Add new columns to existing tables (SQLite has no IF NOT EXISTS on ALTER TABLE)."""
+    migrations = [
+        # Week 4 — health constraints on users table
+        "ALTER TABLE users ADD COLUMN health_conditions TEXT",
+        "ALTER TABLE users ADD COLUMN allergies TEXT",
+        "ALTER TABLE users ADD COLUMN strict_avoid_foods TEXT",
+        "ALTER TABLE users ADD COLUMN macro_strategy VARCHAR",
+        "ALTER TABLE users ADD COLUMN custom_calorie_target FLOAT",
+        "ALTER TABLE users ADD COLUMN custom_protein_g FLOAT",
+        "ALTER TABLE users ADD COLUMN custom_carbs_g FLOAT",
+        "ALTER TABLE users ADD COLUMN custom_fat_g FLOAT",
+        # Week 4 — source + notes on meal_logs table
+        "ALTER TABLE meal_logs ADD COLUMN source VARCHAR",
+        "ALTER TABLE meal_logs ADD COLUMN notes TEXT",
+    ]
+    with engine.connect() as conn:
+        for stmt in migrations:
+            try:
+                conn.execute(text(stmt))
+                conn.commit()
+            except Exception:
+                pass  # column already exists
+
+
+_migrate_db()
+
 app = FastAPI(
     title="NutriFridge AI API",
     description="Personalized nutrition + refrigerator inventory assistant",
-    version="3.0.0",
+    version="4.0.0",
 )
 
 app.add_middleware(
@@ -40,7 +69,7 @@ app.include_router(waste_log.router)
 
 @app.get("/")
 def root():
-    return {"message": "NutriFridge AI API is running", "docs": "/docs", "version": "3.0.0"}
+    return {"message": "NutriFridge AI API is running", "docs": "/docs", "version": "4.0.0"}
 
 
 @app.get("/health")

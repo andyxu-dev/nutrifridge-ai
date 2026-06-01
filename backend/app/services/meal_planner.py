@@ -104,6 +104,7 @@ def _build_meal_from_template(
         "score_breakdown": score_result["breakdown"],
         "instructions": template["instructions"],
         "tags": template.get("tags", []),
+        "excluded": score_result.get("excluded", False),
     }
 
 
@@ -154,6 +155,8 @@ def generate_meal_plan(
             if not matched:
                 continue
             candidate = _build_meal_from_template(tmpl, matched, user, remaining_macros)
+            if candidate.get("excluded", False):
+                continue  # skip hard allergy/avoidance exclusions
             if candidate["score"] > best_score:
                 best_score = candidate["score"]
                 best_meal = candidate

@@ -26,7 +26,27 @@ const defaultForm = {
   diet_style: "no_preference",
   disliked_foods: "",
   preferred_foods: "",
+  allergies: "",
+  strict_avoid_foods: "",
+  macro_strategy: "standard",
+  custom_calorie_target: "",
+  custom_protein_g: "",
+  custom_carbs_g: "",
+  custom_fat_g: "",
 };
+
+const HEALTH_CONDITIONS = [
+  { value: "fatty_liver",      label: "Fatty Liver (NAFLD)" },
+  { value: "diabetes",         label: "Type 2 Diabetes" },
+  { value: "prediabetes",      label: "Prediabetes" },
+  { value: "high_cholesterol", label: "High Cholesterol" },
+  { value: "hypertension",     label: "Hypertension" },
+  { value: "gout",             label: "Gout" },
+  { value: "kidney_disease",   label: "Kidney Disease (CKD)" },
+  { value: "lactose_intolerance", label: "Lactose Intolerance" },
+  { value: "gluten_sensitivity",  label: "Gluten Sensitivity" },
+  { value: "celiac",           label: "Celiac Disease" },
+];
 
 const SELECT_FIELDS: Record<string, string[]> = {
   sex: ["male", "female", "other"],
@@ -69,6 +89,15 @@ const SELECT_LABELS: Record<string, Record<string, string>> = {
     low_carb: "Low Carb",
     low_fat: "Low Fat",
   },
+  macro_strategy: {
+    standard: "Standard (formula-based)",
+    high_protein: "High Protein (2.2g/kg)",
+    moderate_carb: "Moderate Carb (40%)",
+    low_carb: "Low Carb (≤100g/day)",
+    low_fat: "Low Fat (≤20%)",
+    conservative_surplus: "Conservative Surplus (+150 kcal)",
+    custom: "Custom (enter your own targets)",
+  },
 };
 
 const GOAL_EMOJI: Record<string, string> = {
@@ -87,6 +116,7 @@ function fieldLabel(key: string) {
 
 export default function ProfilePage() {
   const [form, setForm] = useState(defaultForm);
+  const [selectedConditions, setSelectedConditions] = useState<string[]>([]);
   const [hasProfile, setHasProfile] = useState(false);
   const [nutrition, setNutrition] = useState<NutritionTarget | null>(null);
   const [saving, setSaving] = useState(false);
@@ -110,7 +140,15 @@ export default function ProfilePage() {
           diet_style:              profile.diet_style ?? "no_preference",
           disliked_foods:          (profile.disliked_foods ?? []).join(", "),
           preferred_foods:         (profile.preferred_foods ?? []).join(", "),
+          allergies:               (profile.allergies ?? []).join(", "),
+          strict_avoid_foods:      (profile.strict_avoid_foods ?? []).join(", "),
+          macro_strategy:          profile.macro_strategy ?? "standard",
+          custom_calorie_target:   profile.custom_calorie_target != null ? String(profile.custom_calorie_target) : "",
+          custom_protein_g:        profile.custom_protein_g != null ? String(profile.custom_protein_g) : "",
+          custom_carbs_g:          profile.custom_carbs_g != null ? String(profile.custom_carbs_g) : "",
+          custom_fat_g:            profile.custom_fat_g != null ? String(profile.custom_fat_g) : "",
         });
+        setSelectedConditions(profile.health_conditions ?? []);
       }
     });
     fetchNutritionTarget().then(setNutrition);
@@ -122,6 +160,12 @@ export default function ProfilePage() {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
+  const toggleCondition = (value: string) => {
+    setSelectedConditions((prev) =>
+      prev.includes(value) ? prev.filter((c) => c !== value) : [...prev, value]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -130,6 +174,7 @@ export default function ProfilePage() {
       const parseFoodList = (raw: string) =>
         raw.split(",").map((s) => s.trim()).filter(Boolean);
 
+      const isCustom = form.macro_strategy === "custom";
       const data = {
         name:                    form.name,
         height_cm:               parseFloat(form.height_cm),
@@ -144,6 +189,14 @@ export default function ProfilePage() {
         diet_style:              form.diet_style || null,
         disliked_foods:          parseFoodList(form.disliked_foods),
         preferred_foods:         parseFoodList(form.preferred_foods),
+        health_conditions:       selectedConditions,
+        allergies:               parseFoodList(form.allergies),
+        strict_avoid_foods:      parseFoodList(form.strict_avoid_foods),
+        macro_strategy:          form.macro_strategy || null,
+        custom_calorie_target:   isCustom && form.custom_calorie_target ? parseFloat(form.custom_calorie_target) : null,
+        custom_protein_g:        isCustom && form.custom_protein_g ? parseFloat(form.custom_protein_g) : null,
+        custom_carbs_g:          isCustom && form.custom_carbs_g ? parseFloat(form.custom_carbs_g) : null,
+        custom_fat_g:            isCustom && form.custom_fat_g ? parseFloat(form.custom_fat_g) : null,
       };
 
       if (hasProfile) {
@@ -299,6 +352,117 @@ export default function ProfilePage() {
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
             </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 mx-6" />
+
+        {/* ── Health Constraints ────────────────────────────── */}
+        <div className="px-6 pt-5 pb-6">
+          <div className="flex items-center gap-2 mb-1">
+            <span className="text-xl">🏥</span>
+            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Health Constraints</h2>
+          </div>
+          <p className="text-xs text-gray-400 mb-5">
+            Selected conditions adjust your macro targets and meal scoring. This is not medical advice — consult a healthcare professional.
+          </p>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-3">Health Conditions</label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {HEALTH_CONDITIONS.map((hc) => (
+                  <label key={hc.value} className="flex items-center gap-2.5 cursor-pointer group">
+                    <input
+                      type="checkbox"
+                      checked={selectedConditions.includes(hc.value)}
+                      onChange={() => toggleCondition(hc.value)}
+                      className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                    />
+                    <span className="text-sm text-gray-700 group-hover:text-gray-900">{hc.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Allergies
+                <span className="text-gray-400 font-normal ml-1 text-xs">(comma-separated)</span>
+              </label>
+              <input
+                name="allergies" value={form.allergies} onChange={handleChange}
+                placeholder="e.g. peanut, tree nuts, shellfish"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+              <p className="text-xs text-red-500 mt-1">Meals containing these ingredients will be hard-excluded from recommendations.</p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Strict Avoid Foods
+                <span className="text-gray-400 font-normal ml-1 text-xs">(comma-separated)</span>
+              </label>
+              <input
+                name="strict_avoid_foods" value={form.strict_avoid_foods} onChange={handleChange}
+                placeholder="e.g. alcohol, processed meat"
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              />
+              <p className="text-xs text-gray-400 mt-1">Like allergies — these items are excluded from all meal plans.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="border-t border-gray-100 mx-6" />
+
+        {/* ── Custom Macro Overrides ────────────────────────── */}
+        <div className="px-6 pt-5 pb-6">
+          <div className="flex items-center gap-2 mb-5">
+            <span className="text-xl">⚙️</span>
+            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wider">Macro Strategy</h2>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Strategy</label>
+              <select
+                name="macro_strategy" value={form.macro_strategy} onChange={handleChange}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+              >
+                {Object.entries(SELECT_LABELS.macro_strategy).map(([val, label]) => (
+                  <option key={val} value={val}>{label}</option>
+                ))}
+              </select>
+            </div>
+
+            {form.macro_strategy === "custom" && (
+              <div>
+                <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                  Custom targets override all formula-based calculations.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  {[
+                    { name: "custom_calorie_target", label: "Calories (kcal)", placeholder: "2000" },
+                    { name: "custom_protein_g",      label: "Protein (g)",     placeholder: "150" },
+                    { name: "custom_carbs_g",        label: "Carbs (g)",       placeholder: "200" },
+                    { name: "custom_fat_g",          label: "Fat (g)",         placeholder: "65" },
+                  ].map((f) => (
+                    <div key={f.name}>
+                      <label className="block text-sm font-medium text-gray-700 mb-1.5">{f.label}</label>
+                      <input
+                        name={f.name}
+                        type="number"
+                        step="any"
+                        value={form[f.name as keyof typeof form]}
+                        onChange={handleChange}
+                        placeholder={f.placeholder}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

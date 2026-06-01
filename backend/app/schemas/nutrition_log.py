@@ -1,5 +1,4 @@
 from typing import Optional, List, Any
-from datetime import datetime
 from pydantic import BaseModel
 
 
@@ -20,6 +19,16 @@ class MealLogCreate(BaseModel):
     ingredients_used: List[IngredientUsed] = []
 
 
+class ManualMealCreate(BaseModel):
+    meal_type: str
+    meal_name: str
+    calories: float
+    protein_g: float
+    carbs_g: float
+    fat_g: float
+    notes: Optional[str] = None
+
+
 class MealLogResponse(BaseModel):
     id: int
     meal_type: str
@@ -29,6 +38,8 @@ class MealLogResponse(BaseModel):
     carbs_g: float
     fat_g: float
     ingredients_used: List[Any] = []
+    source: Optional[str] = "recommended"
+    notes: Optional[str] = None
     created_at: Optional[str] = None
 
 

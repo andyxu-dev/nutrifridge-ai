@@ -21,6 +21,16 @@ def calculate_bmr(user) -> float:
 
 
 def calculate_nutrition_target(user) -> Dict:
+    """
+    Calculate the daily nutrition target for a user.
+
+    Returns both the base targets (from BMR/TDEE) and adjusted targets
+    (after applying health conditions and macro strategy).
+    The top-level calories/protein_g/carbs_g/fat_g reflect the adjusted values
+    for backward compatibility with all existing callers.
+    """
+    from app.services.health_constraint_engine import adjust_nutrition_target
+
     bmr = calculate_bmr(user)
     tdee = bmr * ACTIVITY_MULTIPLIERS[user.activity_level]
 
@@ -39,11 +49,31 @@ def calculate_nutrition_target(user) -> Dict:
     fat_calories = fat_g * 9
     carbs_g = max(0, (calories - protein_calories - fat_calories) / 4)
 
-    return {
+    base_target = {
         "calories": round(calories),
         "protein_g": round(protein_g, 1),
         "carbs_g": round(carbs_g, 1),
         "fat_g": round(fat_g, 1),
         "bmr": round(bmr),
         "tdee": round(tdee),
+    }
+
+    adjusted = adjust_nutrition_target(user, base_target)
+
+    return {
+        # Adjusted values at top level for backward compatibility
+        "calories": adjusted["calories"],
+        "protein_g": adjusted["protein_g"],
+        "carbs_g": adjusted["carbs_g"],
+        "fat_g": adjusted["fat_g"],
+        "bmr": round(bmr),
+        "tdee": round(tdee),
+        # Base values for comparison
+        "base_calories": base_target["calories"],
+        "base_protein_g": base_target["protein_g"],
+        "base_carbs_g": base_target["carbs_g"],
+        "base_fat_g": base_target["fat_g"],
+        # Adjustment metadata
+        "adjustment_reasons": adjusted["adjustment_reasons"],
+        "using_custom_targets": adjusted["using_custom_targets"],
     }

@@ -1,22 +1,24 @@
 """
 Meal scoring service.
 Scores a meal template against the user's current state and preferences.
-Returns a score (0–100), a breakdown dict, and a human-readable explanation.
+Returns a score (0–100), a breakdown dict, a human-readable explanation,
+and an 'excluded' flag for hard-excluded meals.
 """
 
 from typing import Dict, List, Optional
 
 from app.services.expiration_engine import get_expiration_risk
 
-_CUISINE_MATCH = 10       # points for matching cuisine preference
-_DIET_MATCH = 15          # points for matching diet style
-_COOKING_TIME_MATCH = 8   # points for matching cooking time
-_PROTEIN_GAP = 20         # max points for helping protein gap
-_CALORIE_FIT = 15         # max points for fitting calorie budget
-_URGENCY = 25             # max points for using urgent ingredients
-_VARIETY = 7              # max points for ingredient variety
+_CUISINE_MATCH = 10
+_DIET_MATCH = 15
+_COOKING_TIME_MATCH = 8
+_PROTEIN_GAP = 20
+_CALORIE_FIT = 15
+_URGENCY = 25
+_VARIETY = 7
+_HEALTH_CONSTRAINT_MAX = 30
 
-_DISLIKE_PENALTY = 25     # points deducted if a disliked food appears
+_DISLIKE_PENALTY = 25
 
 
 def _cooking_time_ok(template_minutes: int, preference: Optional[str]) -> bool:
@@ -31,7 +33,7 @@ def _cooking_time_ok(template_minutes: int, preference: Optional[str]) -> bool:
 
 def score_meal(
     template: dict,
-    matched_items: List,        # inventory items assigned to this meal
+    matched_items: List,
     user,
     remaining_macros: Dict,
     estimated_macros: Dict,
@@ -41,7 +43,8 @@ def score_meal(
 
     Returns:
         {
-          "total": float,          # 0–100
+          "total": float,      # 0–100
+          "excluded": bool,    # True if hard allergy/avoidance exclusion triggered
           "breakdown": {
               "urgency": float,
               "protein_gap": float,
@@ -50,10 +53,14 @@ def score_meal(
               "cooking_time": float,
               "variety": float,
               "dislike_penalty": float,
+              "health_constraint_score": float,
+              "allergy_exclusion": float,   # 0 normally, -100 if excluded
           },
           "explanation": str,
         }
     """
+    from app.services.health_constraint_engine import get_hard_excluded_foods, get_tag_penalties
+
     breakdown: Dict[str, float] = {
         "urgency": 0.0,
         "protein_gap": 0.0,
@@ -62,8 +69,29 @@ def score_meal(
         "cooking_time": 0.0,
         "variety": 0.0,
         "dislike_penalty": 0.0,
+        "health_constraint_score": 0.0,
+        "allergy_exclusion": 0.0,
     }
     reasons: List[str] = []
+
+    # ── 0. Hard exclusion check ─────────────────────────────────────────────
+    hard_excluded = get_hard_excluded_foods(user)
+    if hard_excluded and matched_items:
+        excluded_items = [
+            i.name for i in matched_items
+            if any(ex in i.name.lower() for ex in hard_excluded)
+        ]
+        if excluded_items:
+            breakdown["allergy_exclusion"] = -100.0
+            return {
+                "total": 0.0,
+                "excluded": True,
+                "breakdown": breakdown,
+                "explanation": (
+                    f"Excluded: contains {', '.join(excluded_items)} "
+                    "(allergy or avoidance restriction)."
+                ),
+            }
 
     # ── 1. Urgency score ────────────────────────────────────────────────────
     if matched_items:
@@ -91,7 +119,6 @@ def score_meal(
     if cal_remaining > 0 and meal_cal > 0:
         ratio = meal_cal / cal_remaining
         if ratio <= 1.0:
-            # Score highest when meal uses 20–60 % of remaining budget
             if 0.15 <= ratio <= 0.65:
                 breakdown["calorie_fit"] = _CALORIE_FIT
             elif ratio < 0.15:
@@ -99,7 +126,6 @@ def score_meal(
             else:
                 breakdown["calorie_fit"] = round(_CALORIE_FIT * (1 - (ratio - 0.65) / 0.35), 1)
         else:
-            # Exceeds remaining — penalty proportional to overshoot
             overshoot = (meal_cal - cal_remaining) / max(cal_remaining, 1)
             breakdown["calorie_fit"] = max(-10.0, round(-_CALORIE_FIT * min(overshoot, 1.0), 1))
             reasons.append("may exceed calorie budget")
@@ -113,8 +139,8 @@ def score_meal(
             reasons.append(f"matches {cuisine_pref} cuisine preference")
         elif template.get("cuisine") == "any":
             pref_score += _CUISINE_MATCH // 2
-    elif cuisine_pref in ("mixed", "no_preference") or not cuisine_pref:
-        pref_score += _CUISINE_MATCH // 2  # neutral bonus
+    else:
+        pref_score += _CUISINE_MATCH // 2
 
     diet_style = getattr(user, "diet_style", None)
     template_tags = template.get("tags", [])
@@ -140,14 +166,14 @@ def score_meal(
         breakdown["variety"] = round(_VARIETY * min(1.0, unique_cats / 3), 1)
 
     # ── 7. Dislike penalty ──────────────────────────────────────────────────
+    import json as _json
     raw_dislikes = getattr(user, "disliked_foods", None)
     dislikes: List[str] = []
     if isinstance(raw_dislikes, list):
         dislikes = [d.lower() for d in raw_dislikes]
     elif isinstance(raw_dislikes, str):
-        import json
         try:
-            dislikes = [d.lower() for d in json.loads(raw_dislikes)]
+            dislikes = [d.lower() for d in _json.loads(raw_dislikes)]
         except Exception:
             pass
 
@@ -160,18 +186,59 @@ def score_meal(
             breakdown["dislike_penalty"] = -_DISLIKE_PENALTY
             reasons.append(f"contains disliked food: {', '.join(disliked_found)}")
 
+    # ── 8. Health constraint score ──────────────────────────────────────────
+    tag_penalties = get_tag_penalties(user)
+    health_penalty = 0.0
+    health_reasons: List[str] = []
+
+    for tag, penalty in tag_penalties.items():
+        if tag in template_tags:
+            health_penalty += penalty
+            health_reasons.append(f"{tag.replace('_', ' ')} penalty for health condition")
+
+    # Also check macro_strategy alignment
+    macro_strategy = getattr(user, "macro_strategy", None) or "standard"
+    if macro_strategy == "low_carb" and "low_carb" in template_tags:
+        health_penalty += 5.0  # small bonus for matching strategy
+    elif macro_strategy == "high_protein" and "high_protein" in template_tags:
+        health_penalty += 5.0
+
+    breakdown["health_constraint_score"] = round(
+        max(-_HEALTH_CONSTRAINT_MAX, min(_HEALTH_CONSTRAINT_MAX, health_penalty)), 1
+    )
+    if health_reasons:
+        reasons.extend(health_reasons)
+
+    # Also add health context to explanation when conditions present
+    conditions_raw = getattr(user, "health_conditions", None)
+    import json as _j
+    conditions = []
+    if isinstance(conditions_raw, list):
+        conditions = conditions_raw
+    elif isinstance(conditions_raw, str):
+        try:
+            conditions = _j.loads(conditions_raw)
+        except Exception:
+            pass
+
+    if conditions and any(tag in template_tags for tag in ("high_protein", "low_carb", "balanced")):
+        if "fatty_liver" in conditions:
+            reasons.append("fits moderate-fat goal for fatty liver management")
+        if "diabetes" in conditions or "prediabetes" in conditions:
+            if "low_carb" in template_tags or "high_protein" in template_tags:
+                reasons.append("low-carb/high-protein profile supports blood sugar management")
+
     # ── Total ───────────────────────────────────────────────────────────────
     total = sum(breakdown.values())
     total = round(max(0.0, min(100.0, total)), 1)
 
     explanation = (
-        "; ".join(reasons)
-        if reasons
-        else "selected based on ingredient availability"
+        "; ".join(reasons) if reasons else "selected based on ingredient availability"
     )
 
     return {
         "total": total,
+        "excluded": False,
         "breakdown": breakdown,
         "explanation": explanation.capitalize() + ".",
     }

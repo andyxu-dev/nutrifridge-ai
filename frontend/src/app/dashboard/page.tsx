@@ -11,6 +11,8 @@ import {
   fetchWasteLog,
   logMeal,
   deleteMealLog,
+  logManualMeal,
+  fetchNutritionAnalysis,
 } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -36,7 +38,22 @@ type LoggedMeal = {
   carbs_g: number;
   fat_g: number;
   ingredients_used: unknown[];
+  source?: string;
+  notes?: string;
   created_at: string | null;
+};
+
+type NutritionAnalysis = {
+  date: string;
+  consumed: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+  target: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+  remaining: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+  macro_status: { calories: string; protein: string; carbs: string; fat: string };
+  health_notes: string[];
+  summary: string;
+  next_meal_recommendation: string;
+  adjustment_reasons: string[];
+  disclaimer: string;
 };
 
 type PlanIngredient = {
@@ -198,25 +215,33 @@ export default function DashboardPage() {
   const [urgentItems, setUrgentItems] = useState<UrgentItem[]>([]);
   const [groceryList, setGroceryList] = useState<GroceryList | null>(null);
   const [wasteLog, setWasteLog] = useState<WasteEntry[]>([]);
+  const [analysis, setAnalysis] = useState<NutritionAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState<string | null>(null);
   const [eatenTypes, setEatenTypes] = useState<Set<string>>(new Set());
   const [markMsg, setMarkMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
+  const [quickForm, setQuickForm] = useState({
+    meal_type: "snack", meal_name: "", calories: "", protein_g: "", carbs_g: "", fat_g: "", notes: "",
+  });
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [quickMsg, setQuickMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const refreshAll = useCallback(async () => {
-    const [logData, planData, urgentData, groceryData, wasteData] = await Promise.all([
+    const [logData, planData, urgentData, groceryData, wasteData, analysisData] = await Promise.all([
       fetchNutritionLog(),
       fetchMealPlan(),
       fetchUrgentItems(),
       fetchGroceryList(),
       fetchWasteLog(),
+      fetchNutritionAnalysis(),
     ]);
     setLog(logData);
     setMealPlan(planData);
     setUrgentItems(urgentData ?? []);
     setGroceryList(groceryData);
     setWasteLog((wasteData ?? []).slice(0, 5));
+    setAnalysis(analysisData);
     if (logData?.meals) {
       setEatenTypes(new Set(logData.meals.map((m: LoggedMeal) => m.meal_type)));
     }
@@ -267,6 +292,36 @@ export default function DashboardPage() {
       await deleteMealLog(mealId);
       await refreshAll();
     } catch { /* ignore */ }
+  };
+
+  const handleQuickMeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setQuickSaving(true);
+    setQuickMsg(null);
+    try {
+      await logManualMeal({
+        meal_type: quickForm.meal_type,
+        meal_name: quickForm.meal_name,
+        calories:  parseFloat(quickForm.calories) || 0,
+        protein_g: parseFloat(quickForm.protein_g) || 0,
+        carbs_g:   parseFloat(quickForm.carbs_g) || 0,
+        fat_g:     parseFloat(quickForm.fat_g) || 0,
+        notes:     quickForm.notes || null,
+      });
+      setQuickMsg({ type: "success", text: "Meal logged!" });
+      setQuickForm({ meal_type: "snack", meal_name: "", calories: "", protein_g: "", carbs_g: "", fat_g: "", notes: "" });
+      await refreshAll();
+    } catch (err) {
+      setQuickMsg({ type: "error", text: String(err) });
+    } finally {
+      setQuickSaving(false);
+    }
+  };
+
+  const STATUS_STYLE: Record<string, string> = {
+    under:    "bg-yellow-100 text-yellow-700",
+    on_track: "bg-green-100 text-green-700",
+    over:     "bg-red-100 text-red-700",
   };
 
   // Loading skeleton
@@ -580,10 +635,13 @@ export default function DashboardPage() {
                     {log.meals.map((m) => (
                       <div key={m.id} className="px-5 py-3 flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                             <span className={`text-xs font-bold uppercase px-1.5 py-0.5 rounded ${MEAL_TYPE_COLORS[m.meal_type] ?? "bg-gray-100 text-gray-600"}`}>
                               {m.meal_type}
                             </span>
+                            {m.source === "manual" && (
+                              <span className="text-xs font-medium bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded">Manual</span>
+                            )}
                           </div>
                           <p className="text-sm text-gray-800 truncate">{m.meal_name}</p>
                           <p className="text-xs text-gray-400">{Math.round(m.calories)} kcal · {m.protein_g}g P</p>
@@ -666,6 +724,120 @@ export default function DashboardPage() {
                   {groceryList.recommended_to_buy.length === 0 && (
                     <div className="px-5 py-4 text-sm text-gray-400 text-center">Pantry looks stocked!</div>
                   )}
+                </div>
+              </div>
+            )}
+
+            {/* Quick Add Meal */}
+            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-5 py-4 border-b border-gray-100">
+                <h3 className="font-semibold text-gray-800 text-sm">Quick Add Meal</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Log food eaten outside the home</p>
+              </div>
+              <form onSubmit={handleQuickMeal} className="px-5 py-4 space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+                    <select
+                      value={quickForm.meal_type}
+                      onChange={(e) => setQuickForm((p) => ({ ...p, meal_type: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                    >
+                      {["breakfast", "lunch", "dinner", "snack"].map((t) => (
+                        <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                    <input
+                      required
+                      value={quickForm.meal_name}
+                      onChange={(e) => setQuickForm((p) => ({ ...p, meal_name: e.target.value }))}
+                      placeholder="e.g. Protein bar"
+                      className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { key: "calories",  label: "kcal" },
+                    { key: "protein_g", label: "P(g)" },
+                    { key: "carbs_g",   label: "C(g)" },
+                    { key: "fat_g",     label: "F(g)" },
+                  ].map(({ key, label }) => (
+                    <div key={key}>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">{label}</label>
+                      <input
+                        type="number" min="0" step="any"
+                        value={quickForm[key as keyof typeof quickForm]}
+                        onChange={(e) => setQuickForm((p) => ({ ...p, [key]: e.target.value }))}
+                        placeholder="0"
+                        className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  <input
+                    value={quickForm.notes}
+                    onChange={(e) => setQuickForm((p) => ({ ...p, notes: e.target.value }))}
+                    placeholder="Notes (optional)"
+                    className="w-full border border-gray-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
+                  />
+                </div>
+                {quickMsg && (
+                  <p className={`text-xs rounded-lg px-3 py-2 ${
+                    quickMsg.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                  }`}>{quickMsg.text}</p>
+                )}
+                <button
+                  type="submit" disabled={quickSaving}
+                  className="w-full bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-xs font-semibold py-2 rounded-lg transition-colors"
+                >
+                  {quickSaving ? "Logging…" : "Log Meal"}
+                </button>
+              </form>
+            </div>
+
+            {/* Nutrition Analysis */}
+            {analysis && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100">
+                  <h3 className="font-semibold text-gray-800 text-sm">Today&apos;s Analysis</h3>
+                </div>
+                <div className="px-5 py-4 space-y-3">
+                  <p className="text-sm text-gray-700">{analysis.summary}</p>
+
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(Object.entries(analysis.macro_status) as [string, string][]).map(([key, status]) => (
+                      <div key={key} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-1.5">
+                        <span className="text-xs text-gray-500 capitalize">{key}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_STYLE[status] ?? "bg-gray-100 text-gray-600"}`}>
+                          {status.replace("_", " ")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {analysis.next_meal_recommendation && (
+                    <div className="bg-blue-50 border border-blue-100 rounded-xl px-3 py-2.5">
+                      <p className="text-xs text-blue-700 font-medium mb-0.5">Next meal suggestion</p>
+                      <p className="text-xs text-blue-600">{analysis.next_meal_recommendation}</p>
+                    </div>
+                  )}
+
+                  {analysis.health_notes.length > 0 && (
+                    <div className="space-y-1.5">
+                      {analysis.health_notes.map((note, i) => (
+                        <p key={i} className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                          {note}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-xs text-gray-300 italic">{analysis.disclaimer}</p>
                 </div>
               </div>
             )}

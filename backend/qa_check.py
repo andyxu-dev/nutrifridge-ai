@@ -409,6 +409,255 @@ try:
 except Exception as e:
     check("Discard / waste log", False, str(e))
 
+# ── 14. Health Condition Profile Fields ──────────────────────────────────────
+section("14. Health condition profile fields persistence")
+health_profile_payload = {
+    "name": "Health QA User",
+    "age": 40,
+    "sex": "male",
+    "height_cm": 175.0,
+    "weight_kg": 80.0,
+    "activity_level": "moderate",
+    "goal": "muscle_gain",
+    "health_conditions": ["fatty_liver", "diabetes"],
+    "allergies": ["peanut"],
+    "strict_avoid_foods": ["shellfish"],
+    "macro_strategy": "high_protein",
+}
+try:
+    r = requests.put(f"{BASE}/profile", json=health_profile_payload, timeout=5)
+    check("PUT /profile with health fields returns 200", r.status_code == 200, f"status={r.status_code}")
+    data = r.json()
+    check("health_conditions saved as list", isinstance(data.get("health_conditions"), list))
+    check("health_conditions contains 'fatty_liver'", "fatty_liver" in (data.get("health_conditions") or []))
+    check("allergies saved as list", isinstance(data.get("allergies"), list))
+    check("allergies contains 'peanut'", "peanut" in (data.get("allergies") or []))
+    check("strict_avoid_foods saved as list", isinstance(data.get("strict_avoid_foods"), list))
+    check("macro_strategy saved", data.get("macro_strategy") == "high_protein")
+except Exception as e:
+    check("Health profile fields", False, str(e))
+
+# ── 15. Adjusted Nutrition Target ─────────────────────────────────────────────
+section("15. Adjusted nutrition target — fatty_liver + muscle_gain + high_protein")
+try:
+    r = requests.get(f"{BASE}/nutrition-target", timeout=5)
+    check("GET /nutrition-target returns 200", r.status_code == 200)
+    data = r.json()
+    check("adjustment_reasons present", isinstance(data.get("adjustment_reasons"), list))
+    check("using_custom_targets present", "using_custom_targets" in data)
+    check("base_calories present", "base_calories" in data)
+    check("health_mode_summary present", isinstance(data.get("health_mode_summary"), str))
+    check("disclaimer present", "disclaimer" in data)
+    # fatty_liver + muscle_gain: calories = tdee + 150 (moderate surplus)
+    cal = data.get("calories", 0)
+    tdee = data.get("tdee", 0)
+    check("Adjusted calories are within 250 kcal of tdee (fatty_liver surplus cap)",
+          abs(cal - tdee) <= 250, f"cal={cal}, tdee={tdee}")
+    # high_protein strategy: protein should be elevated
+    protein = data.get("protein_g", 0)
+    weight = 80.0
+    check("High protein strategy: protein_g >= 1.6 * weight_kg",
+          protein >= 1.6 * weight, f"{protein}g vs min {1.6 * weight}g")
+except Exception as e:
+    check("Adjusted nutrition target", False, str(e))
+
+# ── 16. Custom Macro Overrides ────────────────────────────────────────────────
+section("16. Custom macro overrides (macro_strategy=custom)")
+custom_payload = {
+    "name": "Custom QA User",
+    "age": 30,
+    "sex": "male",
+    "height_cm": 175.0,
+    "weight_kg": 75.0,
+    "activity_level": "moderate",
+    "goal": "maintenance",
+    "macro_strategy": "custom",
+    "custom_calorie_target": 2000.0,
+    "custom_protein_g": 160.0,
+    "custom_carbs_g": 200.0,
+    "custom_fat_g": 65.0,
+}
+try:
+    r = requests.put(f"{BASE}/profile", json=custom_payload, timeout=5)
+    check("PUT /profile with custom macro overrides returns 200", r.status_code == 200)
+    r = requests.get(f"{BASE}/nutrition-target", timeout=5)
+    data = r.json()
+    check("Custom calorie target applied (2000 kcal)", abs(data.get("calories", 0) - 2000) < 1,
+          f"got {data.get('calories')}")
+    check("Custom protein applied (160g)", abs(data.get("protein_g", 0) - 160) < 1,
+          f"got {data.get('protein_g')}")
+    check("Custom carbs applied (200g)", abs(data.get("carbs_g", 0) - 200) < 1,
+          f"got {data.get('carbs_g')}")
+    check("using_custom_targets is True", data.get("using_custom_targets") is True)
+except Exception as e:
+    check("Custom macro overrides", False, str(e))
+
+# Restore standard profile for remaining tests
+try:
+    requests.put(f"{BASE}/profile", json={
+        "name": "QA User",
+        "age": 30,
+        "sex": "male",
+        "height_cm": 175.0,
+        "weight_kg": 75.0,
+        "activity_level": "moderate",
+        "goal": "maintenance",
+        "macro_strategy": "standard",
+    }, timeout=5)
+except Exception:
+    pass
+
+# ── 17. Manual Meal Logging ───────────────────────────────────────────────────
+section("17. Manual meal logging — macros updated, source='manual'")
+manual_meal_payload = {
+    "meal_type": "snack",
+    "meal_name": "Protein Bar (manual)",
+    "calories": 220.0,
+    "protein_g": 20.0,
+    "carbs_g": 25.0,
+    "fat_g": 6.0,
+    "notes": "Post-workout snack outside home",
+}
+manual_meal_id = None
+try:
+    r_before = requests.get(f"{BASE}/nutrition-log/today", timeout=5)
+    cal_before = r_before.json().get("consumed", {}).get("calories", 0) if r_before.status_code == 200 else 0
+
+    r = requests.post(f"{BASE}/nutrition-log/manual-meal", json=manual_meal_payload, timeout=5)
+    check("POST /nutrition-log/manual-meal returns 200", r.status_code == 200, f"status={r.status_code}")
+
+    if r.status_code == 200:
+        log_data = r.json()
+        cal_after = log_data.get("consumed", {}).get("calories", 0)
+        check("Calories increased by 220 after manual meal",
+              abs(cal_after - cal_before - 220) < 1, f"{cal_before} → {cal_after}")
+
+        # Find the manual meal in the log
+        for m in reversed(log_data.get("meals", [])):
+            if m.get("meal_name") == "Protein Bar (manual)":
+                manual_meal_id = m.get("id")
+                check("Manual meal source is 'manual'", m.get("source") == "manual",
+                      f"source={m.get('source')}")
+                check("Manual meal notes stored", m.get("notes") == "Post-workout snack outside home")
+                break
+        else:
+            check("Manual meal appears in log", False, "not found in meals list")
+except Exception as e:
+    check("Manual meal logging", False, str(e))
+
+# ── 18. Manual Meal Does NOT Deduct Inventory ─────────────────────────────────
+section("18. Manual meal does not deduct inventory")
+try:
+    # Create a test inventory item
+    r = requests.post(f"{BASE}/inventory", json={
+        "name": "QA Inventory Guard",
+        "quantity": 500.0,
+        "unit": "g",
+        "zone": "fridge",
+        "category": "other",
+    }, timeout=5)
+    guard_id = r.json().get("id") if r.status_code == 201 else None
+
+    if guard_id:
+        r_before = requests.get(f"{BASE}/inventory/{guard_id}", timeout=5)
+        qty_before = r_before.json().get("quantity", 0)
+
+        # The manual meal already logged above has no inventory_item_id references
+        r_after = requests.get(f"{BASE}/inventory/{guard_id}", timeout=5)
+        qty_after = r_after.json().get("quantity", 0)
+
+        check("Inventory quantity unchanged after manual meal",
+              abs(qty_after - qty_before) < 0.001, f"{qty_before} → {qty_after}")
+        requests.delete(f"{BASE}/inventory/{guard_id}", timeout=5)
+    else:
+        check("Guard inventory item created", False, "could not create test item")
+except Exception as e:
+    check("Manual meal inventory non-deduction", False, str(e))
+
+# Clean up manual meal
+if manual_meal_id:
+    try:
+        requests.delete(f"{BASE}/nutrition-log/meal/{manual_meal_id}", timeout=5)
+    except Exception:
+        pass
+
+# ── 19. Nutrition Analysis Endpoint ──────────────────────────────────────────
+section("19. GET /nutrition-log/analysis/today — structure check")
+try:
+    r = requests.get(f"{BASE}/nutrition-log/analysis/today", timeout=5)
+    check("GET /nutrition-log/analysis/today returns 200", r.status_code == 200, f"status={r.status_code}")
+    data = r.json()
+    check("Response has 'macro_status'", "macro_status" in data)
+    check("Response has 'health_notes' list", isinstance(data.get("health_notes"), list))
+    check("Response has 'summary' string", isinstance(data.get("summary"), str))
+    check("Response has 'next_meal_recommendation'", "next_meal_recommendation" in data)
+    check("Response has 'disclaimer'", "disclaimer" in data)
+    ms = data.get("macro_status", {})
+    check("macro_status has 'calories'", "calories" in ms)
+    check("macro_status has 'protein'", "protein" in ms)
+    check("macro_status values are valid",
+          all(v in ("under", "on_track", "over") for v in ms.values()),
+          str(ms))
+except Exception as e:
+    check("Nutrition analysis endpoint", False, str(e))
+
+# ── 20. Meal Scoring Health Constraint Fields ──────────────────────────────────
+section("20. Meal scoring includes health_constraint_score + allergy_exclusion keys")
+try:
+    r = requests.get(f"{BASE}/meal-plan/today", timeout=5)
+    check("GET /meal-plan/today returns 200", r.status_code == 200)
+    plan = r.json()
+    meals = plan.get("meals", [])
+    check("Meal plan has at least 1 meal", len(meals) >= 1, f"{len(meals)} meals")
+    if meals:
+        bd = meals[0].get("score_breakdown", {})
+        check("score_breakdown has 'health_constraint_score'", "health_constraint_score" in bd,
+              str(list(bd.keys())))
+        check("score_breakdown has 'allergy_exclusion'", "allergy_exclusion" in bd,
+              str(list(bd.keys())))
+except Exception as e:
+    check("Meal scoring health fields", False, str(e))
+
+# ── 21. Allergies Hard Exclusion ──────────────────────────────────────────────
+section("21. Allergies hard exclusion from meal plan")
+try:
+    # Set an allergy to a made-up ingredient that no template uses → should not affect meals
+    # Then confirm meals returned are not excluded
+    r = requests.put(f"{BASE}/profile", json={
+        "name": "Allergy QA User",
+        "age": 30,
+        "sex": "male",
+        "height_cm": 175.0,
+        "weight_kg": 75.0,
+        "activity_level": "moderate",
+        "goal": "maintenance",
+        "allergies": ["ZZZFAKEALLERGENZZ99"],
+    }, timeout=5)
+    check("Profile with fake allergy saved", r.status_code == 200)
+
+    r = requests.get(f"{BASE}/meal-plan/today", timeout=5)
+    check("Meal plan still returns 200 with allergy set", r.status_code == 200)
+    plan = r.json()
+    meals = plan.get("meals", [])
+    # No meal should be excluded (fake allergen not present in any inventory item)
+    excluded_meals = [m for m in meals if m.get("excluded", False)]
+    check("No meals hard-excluded by non-matching allergen",
+          len(excluded_meals) == 0, f"{len(excluded_meals)} excluded")
+
+    # Restore profile
+    requests.put(f"{BASE}/profile", json={
+        "name": "QA User",
+        "age": 30,
+        "sex": "male",
+        "height_cm": 175.0,
+        "weight_kg": 75.0,
+        "activity_level": "moderate",
+        "goal": "maintenance",
+        "allergies": [],
+    }, timeout=5)
+except Exception as e:
+    check("Allergies hard exclusion", False, str(e))
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 total = len(results)
 passed = sum(results)

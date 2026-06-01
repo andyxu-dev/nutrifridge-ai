@@ -9,10 +9,18 @@ from app.schemas.user import UserCreate, UserUpdate, UserResponse
 
 router = APIRouter(prefix="/profile", tags=["profile"])
 
+_JSON_LIST_FIELDS = (
+    "disliked_foods",
+    "preferred_foods",
+    "health_conditions",
+    "allergies",
+    "strict_avoid_foods",
+)
+
 
 def _serialize_user_data(data: dict) -> dict:
     """Convert List fields to JSON strings for DB storage."""
-    for field in ("disliked_foods", "preferred_foods"):
+    for field in _JSON_LIST_FIELDS:
         val = data.get(field)
         if isinstance(val, list):
             data[field] = json.dumps(val)

@@ -97,3 +97,15 @@ export async function fetchGroceryList() {
 export async function fetchWasteLog() {
   try { return await request("/waste-log"); } catch { return []; }
 }
+
+// ── Nutrition Log — manual meal & analysis ────────────────────────────────
+export async function logManualMeal(data: unknown) {
+  return request("/nutrition-log/manual-meal", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+}
+export async function fetchNutritionAnalysis() {
+  try { return await request("/nutrition-log/analysis/today"); } catch { return null; }
+}
