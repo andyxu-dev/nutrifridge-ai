@@ -36,3 +36,10 @@ out/
 # Logs
 *.log
 npm-debug.log*
+
+# Local environment files
+.env.local
+
+# Java/Maven build artifacts
+backend-java/target/
+*.class
