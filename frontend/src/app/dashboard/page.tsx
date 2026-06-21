@@ -13,6 +13,8 @@ import {
   deleteMealLog,
   logManualMeal,
   fetchNutritionAnalysis,
+  fetchFamily,
+  fetchFamilyMealPlan,
 } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -137,6 +139,36 @@ type WasteEntry = {
   discarded_at: string;
 };
 
+type FamilyMemberBasic = {
+  id?: number;
+  member_key: string;
+  name: string;
+  goal?: string;
+  diet_style?: string;
+};
+
+type FamilyDataBasic = {
+  primary_member: FamilyMemberBasic;
+  additional_members: FamilyMemberBasic[];
+};
+
+type FamilyMeal = {
+  name: string;
+  meal_type: string;
+  estimated_macros: Macros;
+  per_member_allocations?: {
+    member_name: string;
+    portion_guidance: string;
+    estimated_macros: Macros;
+  }[];
+};
+
+type FamilyPlanData = {
+  meals: FamilyMeal[];
+  recommendation_summary: string;
+  conflict_notes: string[];
+};
+
 // ── Style helpers ─────────────────────────────────────────────────────────
 
 const RISK_STYLES: Record<string, string> = {
@@ -227,6 +259,13 @@ export default function DashboardPage() {
   const [quickSaving, setQuickSaving] = useState(false);
   const [quickMsg, setQuickMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
+  // Family state
+  const [familyData, setFamilyData] = useState<FamilyDataBasic | null>(null);
+  const [familySelections, setFamilySelections] = useState<string[]>([]);
+  const [planMode, setPlanMode] = useState<"personal" | "family">("personal");
+  const [familyPlan, setFamilyPlan] = useState<FamilyPlanData | null>(null);
+  const [familyPlanLoading, setFamilyPlanLoading] = useState(false);
+
   const refreshAll = useCallback(async () => {
     const [logData, planData, urgentData, groceryData, wasteData, analysisData] = await Promise.all([
       fetchNutritionLog(),
@@ -251,9 +290,18 @@ export default function DashboardPage() {
     const init = async () => {
       const online = await checkBackendHealth();
       setBackendOnline(online);
-      if (online) await refreshAll();
+      if (online) {
+        await refreshAll();
+        const fd = await fetchFamily();
+        if (fd) setFamilyData(fd as FamilyDataBasic);
+      }
       setLoading(false);
     };
+    // Restore family selections from localStorage
+    const stored = localStorage.getItem("familySelections");
+    if (stored) {
+      try { setFamilySelections(JSON.parse(stored)); } catch { /* ignore */ }
+    }
     init();
   }, [refreshAll]);
 
@@ -315,6 +363,25 @@ export default function DashboardPage() {
       setQuickMsg({ type: "error", text: String(err) });
     } finally {
       setQuickSaving(false);
+    }
+  };
+
+  const toggleFamilySelection = (key: string) => {
+    setFamilySelections((prev) => {
+      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
+      localStorage.setItem("familySelections", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const handleFamilyPlan = async () => {
+    if (familySelections.length === 0) return;
+    setFamilyPlanLoading(true);
+    try {
+      const data = await fetchFamilyMealPlan(familySelections);
+      setFamilyPlan(data as FamilyPlanData);
+    } catch { /* ignore */ } finally {
+      setFamilyPlanLoading(false);
     }
   };
 
@@ -425,18 +492,98 @@ export default function DashboardPage() {
 
           {/* ── Left: Meal Plan ──────────────────────────────────────── */}
           <div className="lg:col-span-2 space-y-4">
-            <div className="flex items-baseline justify-between">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
               <h2 className="text-base font-semibold text-gray-700">Today&apos;s Recommended Meals</h2>
-              {mealPlan && mealPlan.meals.length > 0 && (
-                <span className="text-xs text-gray-400">{mealPlan.meals.length} meal{mealPlan.meals.length !== 1 ? "s" : ""}</span>
-              )}
+              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-semibold">
+                <button
+                  onClick={() => setPlanMode("personal")}
+                  className={`px-3 py-1.5 rounded-md transition-colors ${planMode === "personal" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}
+                >
+                  Personal Plan
+                </button>
+                <button
+                  onClick={() => { setPlanMode("family"); if (familySelections.length > 0 && !familyPlan) handleFamilyPlan(); }}
+                  className={`px-3 py-1.5 rounded-md transition-colors ${planMode === "family" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}
+                >
+                  Family Plan
+                </button>
+              </div>
             </div>
 
-            {mealPlan?.recommendation_summary && (
+            {planMode === "personal" && mealPlan?.recommendation_summary && (
               <p className="text-sm text-gray-500 italic -mt-1">{mealPlan.recommendation_summary}</p>
             )}
 
-            {markMsg && (
+            {/* ── Family Plan Mode ──────────────────────────────── */}
+            {planMode === "family" && (
+              <div className="space-y-3">
+                {familyPlanLoading && (
+                  <div className="text-sm text-gray-400 text-center py-6 animate-pulse">Generating family meal plan…</div>
+                )}
+                {!familyPlanLoading && familySelections.length === 0 && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-4 text-sm text-blue-700">
+                    Select members in the <Link href="/family" className="underline font-semibold">Family section</Link> to generate a family meal plan.
+                  </div>
+                )}
+                {!familyPlanLoading && familySelections.length > 0 && !familyPlan && (
+                  <button
+                    onClick={handleFamilyPlan}
+                    className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
+                  >
+                    Generate Family Meal Plan
+                  </button>
+                )}
+                {familyPlan && (
+                  <>
+                    {familyPlan.recommendation_summary && (
+                      <p className="text-sm text-gray-500 italic">{familyPlan.recommendation_summary}</p>
+                    )}
+                    {familyPlan.conflict_notes.length > 0 && (
+                      <div className="space-y-1.5">
+                        {familyPlan.conflict_notes.map((note, i) => (
+                          <p key={i} className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">⚠ {note}</p>
+                        ))}
+                      </div>
+                    )}
+                    {familyPlan.meals.map((meal, idx) => (
+                      <div key={idx} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${MEAL_TYPE_COLORS[meal.meal_type] ?? "bg-gray-100 text-gray-600"}`}>
+                            {meal.meal_type}
+                          </span>
+                          <span className="text-sm font-semibold text-gray-900">{meal.name}</span>
+                          <span className="text-xs text-gray-400 ml-auto">{meal.estimated_macros.calories} kcal</span>
+                        </div>
+                        {meal.per_member_allocations && meal.per_member_allocations.length > 0 && (
+                          <div className="mt-2 space-y-1">
+                            {meal.per_member_allocations.map((a, ai) => (
+                              <div key={ai} className="text-xs text-gray-500 flex items-center gap-2">
+                                <span className="font-medium text-gray-700">{a.member_name}:</span>
+                                <span>{a.portion_guidance}</span>
+                                <span className="text-gray-400">({a.estimated_macros.calories} kcal)</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    <button
+                      onClick={handleFamilyPlan}
+                      disabled={familyPlanLoading}
+                      className="text-xs text-green-600 hover:text-green-800 font-semibold"
+                    >
+                      Regenerate →
+                    </button>
+                    <Link href="/family" className="ml-4 text-xs text-gray-400 hover:text-gray-600 font-medium">
+                      Full Family Plan →
+                    </Link>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Personal Plan Mode ────────────────────────────── */}
+            {planMode === "personal" && markMsg && (
               <div className={`rounded-xl px-4 py-3 text-sm border ${
                 markMsg.type === "success"
                   ? "bg-green-50 border-green-200 text-green-700"
@@ -446,7 +593,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {mealPlan && mealPlan.meals.length > 0 ? (
+            {planMode === "personal" && mealPlan && mealPlan.meals.length > 0 ? (
               <>
                 <div className="space-y-4">
                   {mealPlan.meals.map((meal) => {
@@ -597,13 +744,13 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </>
-            ) : mealPlan && mealPlan.meals.length === 0 ? (
+            ) : planMode === "personal" && mealPlan && mealPlan.meals.length === 0 ? (
               <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
                 <span className="text-3xl mb-2 block">🎉</span>
                 <p className="font-semibold text-green-700">You&apos;ve hit your nutrition targets for today!</p>
                 <p className="text-sm text-green-600 mt-1">No more meals recommended.</p>
               </div>
-            ) : (
+            ) : planMode === "personal" ? (
               <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-8 text-center">
                 <span className="text-3xl mb-3 block">🥗</span>
                 <p className="font-medium text-gray-600 mb-1">No meal plan yet</p>
@@ -612,7 +759,7 @@ export default function DashboardPage() {
                   <Link href="/inventory" className="text-green-600 underline">add some ingredients</Link> to get started.
                 </p>
               </div>
-            )}
+            ) : null}
           </div>
 
           {/* ── Right: Sidebar ───────────────────────────────────────── */}
@@ -839,6 +986,48 @@ export default function DashboardPage() {
 
                   <p className="text-xs text-gray-300 italic">{analysis.disclaimer}</p>
                 </div>
+              </div>
+            )}
+
+            {/* Who is eating today? */}
+            {familyData && (
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                  <h3 className="font-semibold text-gray-800 text-sm">Who is Eating Today?</h3>
+                  <Link href="/family" className="text-xs text-green-600 hover:text-green-800 font-semibold">
+                    Family Plan →
+                  </Link>
+                </div>
+                <div className="px-4 py-3 space-y-1.5">
+                  {[familyData.primary_member, ...familyData.additional_members].map((member) => {
+                    const sel = familySelections.includes(member.member_key);
+                    return (
+                      <button
+                        key={member.member_key}
+                        type="button"
+                        onClick={() => toggleFamilySelection(member.member_key)}
+                        className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
+                          sel ? "bg-green-50 text-green-800 font-semibold" : "text-gray-600 hover:bg-gray-50"
+                        }`}
+                      >
+                        <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center text-xs shrink-0 ${
+                          sel ? "bg-green-500 border-green-500 text-white" : "border-gray-300"
+                        }`}>
+                          {sel ? "✓" : ""}
+                        </span>
+                        <span>{member.name}</span>
+                        {member.member_key === "primary" && (
+                          <span className="text-gray-400 font-normal">(you)</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {familySelections.length > 0 && (
+                  <div className="px-4 pb-3">
+                    <p className="text-xs text-gray-400">{familySelections.length} selected — switch to Family Plan above</p>
+                  </div>
+                )}
               </div>
             )}
 

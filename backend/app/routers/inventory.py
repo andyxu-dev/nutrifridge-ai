@@ -1,7 +1,7 @@
 from datetime import date
-from typing import List
+from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -13,7 +13,11 @@ from app.services.food_database import find_best_match
 router = APIRouter(prefix="/inventory", tags=["inventory"])
 
 
-def _enrich(item: InventoryItem) -> dict:
+def _enrich(
+    item: InventoryItem,
+    location_path: Optional[str] = None,
+    location_name: Optional[str] = None,
+) -> dict:
     return {
         "id": item.id,
         "name": item.name,
@@ -28,7 +32,10 @@ def _enrich(item: InventoryItem) -> dict:
         "carbs_per_100g": item.carbs_per_100g,
         "fat_per_100g": item.fat_per_100g,
         "notes": item.notes,
+        "location_id": item.location_id,
         "expiration_risk": get_expiration_risk(item.best_before_date),
+        "location_path": location_path,
+        "location_name": location_name,
     }
 
 
@@ -85,6 +92,45 @@ def get_urgent_items(db: Session = Depends(get_db)):
 def get_all_items(db: Session = Depends(get_db)):
     items = db.query(InventoryItem).all()
     return [_enrich(item) for item in sort_by_risk(items)]
+
+
+@router.get("/search")
+def search_items(
+    q: Optional[str] = Query(None, description="Search term (name, category, or notes)"),
+    location_id: Optional[int] = Query(None, description="Filter by storage location ID"),
+    db: Session = Depends(get_db),
+):
+    """
+    Search inventory by name, category, or notes (case-insensitive contains match).
+    Optionally filter by location_id. Returns enriched items with location path.
+    """
+    # Import here to avoid circular imports at module load time
+    from app.routers.locations import _get_location_path, _get_location_name
+
+    query = db.query(InventoryItem)
+
+    if q:
+        term = f"%{q.lower()}%"
+        query = query.filter(
+            InventoryItem.name.ilike(term)
+            | InventoryItem.category.ilike(term)
+            | InventoryItem.notes.ilike(term)
+        )
+
+    if location_id is not None:
+        query = query.filter(InventoryItem.location_id == location_id)
+
+    items = query.all()
+    items = sort_by_risk(items)
+
+    return [
+        _enrich(
+            item,
+            location_path=_get_location_path(item.location_id, db),
+            location_name=_get_location_name(item.location_id, db),
+        )
+        for item in items
+    ]
 
 
 @router.get("/{item_id}")

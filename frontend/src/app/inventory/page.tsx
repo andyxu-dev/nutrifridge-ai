@@ -7,6 +7,10 @@ import {
   deleteInventoryItem,
   discardInventoryItem,
   searchFoods,
+  searchInventory,
+  fetchLocations,
+  createLocation,
+  deleteLocation,
 } from "@/lib/api";
 
 type InventoryItem = {
@@ -24,6 +28,19 @@ type InventoryItem = {
   fat_per_100g: number | null;
   notes: string | null;
   expiration_risk: string;
+  location_id?: number | null;
+  location_path?: string | null;
+  location_name?: string | null;
+};
+
+type Location = {
+  id: number;
+  name: string;
+  description?: string | null;
+  storage_type?: string | null;
+  temperature_zone?: string | null;
+  parent_id?: number | null;
+  path?: string | null;
 };
 
 type FoodSuggestion = {
@@ -91,6 +108,7 @@ const defaultForm = {
   carbs_per_100g: "",
   fat_per_100g: "",
   notes: "",
+  location_id: "",
 };
 
 // ── Page ──────────────────────────────────────────────────────────────────
@@ -108,9 +126,24 @@ export default function InventoryPage() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
 
+  // Inventory search
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<InventoryItem[]>([]);
+  const [searching, setSearching] = useState(false);
+  const invSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Locations
+  const [locations, setLocations] = useState<Location[]>([]);
+  const [showLocationsSection, setShowLocationsSection] = useState(false);
+  const [showLocationForm, setShowLocationForm] = useState(false);
+  const [locationForm, setLocationForm] = useState({ name: "", storage_type: "fridge", temperature_zone: "refrigerated", parent_id: "" });
+  const [locationSaving, setLocationSaving] = useState(false);
+
   const loadItems = useCallback(() => fetchInventory().then(setItems), []);
 
-  useEffect(() => { loadItems(); }, [loadItems]);
+  const loadLocations = useCallback(() => fetchLocations().then(setLocations), []);
+
+  useEffect(() => { loadItems(); loadLocations(); }, [loadItems, loadLocations]);
 
   useEffect(() => {
     const onClickOutside = (e: MouseEvent) => {
@@ -121,6 +154,18 @@ export default function InventoryPage() {
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, []);
+
+  const handleInventorySearch = (q: string) => {
+    setSearchQuery(q);
+    if (invSearchTimer.current) clearTimeout(invSearchTimer.current);
+    if (!q.trim()) { setSearchResults([]); return; }
+    invSearchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      const results = await searchInventory(q);
+      setSearchResults(results as InventoryItem[]);
+      setSearching(false);
+    }, 300);
+  };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -177,6 +222,7 @@ export default function InventoryPage() {
         carbs_per_100g:    form.carbs_per_100g    ? parseFloat(form.carbs_per_100g)    : null,
         fat_per_100g:      form.fat_per_100g      ? parseFloat(form.fat_per_100g)      : null,
         notes:             form.notes || null,
+        location_id:       form.location_id ? parseInt(form.location_id) : null,
       });
       setForm(defaultForm);
       setShowForm(false);
@@ -193,6 +239,32 @@ export default function InventoryPage() {
     if (!confirm("Permanently delete this item?")) return;
     await deleteInventoryItem(id);
     await loadItems();
+  };
+
+  const handleAddLocation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLocationSaving(true);
+    try {
+      await createLocation({
+        name: locationForm.name,
+        storage_type: locationForm.storage_type,
+        temperature_zone: locationForm.temperature_zone,
+        parent_id: locationForm.parent_id ? parseInt(locationForm.parent_id) : null,
+      });
+      setLocationForm({ name: "", storage_type: "fridge", temperature_zone: "refrigerated", parent_id: "" });
+      setShowLocationForm(false);
+      await loadLocations();
+    } catch { /* ignore */ } finally {
+      setLocationSaving(false);
+    }
+  };
+
+  const handleDeleteLocation = async (id: number) => {
+    if (!confirm("Delete this location?")) return;
+    try {
+      await deleteLocation(id);
+      await loadLocations();
+    } catch { /* ignore */ }
   };
 
   const handleDiscardConfirm = async () => {
@@ -212,6 +284,9 @@ export default function InventoryPage() {
   const freezerCount  = items.filter((i) => i.zone === "freezer").length;
   const pantryCount   = items.filter((i) => i.zone === "pantry").length;
   const urgentCount   = items.filter((i) => ["expired", "high"].includes(i.expiration_risk)).length;
+
+  // Items to display (search results or all items)
+  const displayedItems: InventoryItem[] = searchQuery.trim() ? searchResults : items;
 
   return (
     <div className="space-y-6">
@@ -233,6 +308,35 @@ export default function InventoryPage() {
           {showForm ? "Cancel" : "+ Add Item"}
         </button>
       </div>
+
+      {/* ── Search Bar ────────────────────────────────────────────────── */}
+      <div className="relative">
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(e) => handleInventorySearch(e.target.value)}
+          placeholder="Search by food, category, or location..."
+          className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent pl-10"
+        />
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+        {searching && (
+          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400">Searching…</span>
+        )}
+        {searchQuery && !searching && (
+          <button
+            type="button"
+            onClick={() => { setSearchQuery(""); setSearchResults([]); }}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-sm"
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {searchQuery && (
+        <p className="text-xs text-gray-400 -mt-3">
+          {searchResults.length} result{searchResults.length !== 1 ? "s" : ""} for &quot;{searchQuery}&quot;
+        </p>
+      )}
 
       {/* ── Add Item Form ──────────────────────────────────────────────── */}
       {showForm && (
@@ -347,6 +451,20 @@ export default function InventoryPage() {
                 className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
             </div>
+
+            {/* Location */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Location</label>
+              <select
+                name="location_id" value={form.location_id} onChange={handleChange}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+              >
+                <option value="">No location</option>
+                {locations.map((loc) => (
+                  <option key={loc.id} value={loc.id}>{loc.path ?? loc.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Nutrition fields */}
@@ -402,7 +520,7 @@ export default function InventoryPage() {
       )}
 
       {/* ── Inventory: Empty State ─────────────────────────────────────── */}
-      {items.length === 0 && (
+      {displayedItems.length === 0 && !searchQuery && (
         <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-12 text-center">
           <span className="text-5xl block mb-4">🧺</span>
           <h3 className="font-semibold text-gray-700 mb-2">Your inventory is empty</h3>
@@ -419,13 +537,16 @@ export default function InventoryPage() {
       )}
 
       {/* ── Inventory: Mobile Cards ────────────────────────────────────── */}
-      {items.length > 0 && (
+      {displayedItems.length > 0 && (
         <div className="md:hidden space-y-3">
-          {items.map((item) => (
+          {displayedItems.map((item) => (
             <div key={item.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <h3 className="font-semibold text-gray-900">{item.name}</h3>
+                  {item.location_path && (
+                    <p className="text-xs text-gray-400 mt-0.5">📍 {item.location_path}</p>
+                  )}
                   {item.notes && <p className="text-xs text-gray-400 mt-0.5">{item.notes}</p>}
                 </div>
                 <span className={`text-xs font-medium px-2.5 py-1 rounded-full shrink-0 ml-2 ${RISK_STYLES[item.expiration_risk] ?? RISK_STYLES.unknown}`}>
@@ -509,7 +630,7 @@ export default function InventoryPage() {
       )}
 
       {/* ── Inventory: Desktop Table ───────────────────────────────────── */}
-      {items.length > 0 && (
+      {displayedItems.length > 0 && (
         <div className="hidden md:block bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 border-b border-gray-100">
@@ -528,10 +649,13 @@ export default function InventoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {items.map((item) => (
+              {displayedItems.map((item) => (
                 <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-4 py-3">
                     <p className="font-medium text-gray-900">{item.name}</p>
+                    {item.location_path && (
+                      <p className="text-xs text-gray-400">📍 {item.location_path}</p>
+                    )}
                     {item.notes && <p className="text-xs text-gray-400">{item.notes}</p>}
                   </td>
                   <td className="px-4 py-3">
@@ -606,6 +730,143 @@ export default function InventoryPage() {
           </div>
         </div>
       )}
+
+      {/* ── Locations Section ──────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setShowLocationsSection((v) => !v)}
+          className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-gray-800 text-sm">Storage Locations</span>
+            {locations.length > 0 && (
+              <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">{locations.length}</span>
+            )}
+          </div>
+          <span className="text-gray-400 text-xs">{showLocationsSection ? "▲ Hide" : "▼ Show"}</span>
+        </button>
+
+        {showLocationsSection && (
+          <div className="border-t border-gray-100">
+            {/* Location list */}
+            {locations.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-100 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                    <tr>
+                      <th className="px-4 py-3 text-left">Name</th>
+                      <th className="px-4 py-3 text-left">Type</th>
+                      <th className="px-4 py-3 text-left">Path</th>
+                      <th className="px-4 py-3 text-left">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {locations.map((loc) => (
+                      <tr key={loc.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-2.5 font-medium text-gray-900">{loc.name}</td>
+                        <td className="px-4 py-2.5">
+                          <span className="text-xs text-gray-500 capitalize">{loc.storage_type ?? "—"}</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-xs text-gray-400">{loc.path ?? loc.name}</td>
+                        <td className="px-4 py-2.5">
+                          <button
+                            onClick={() => handleDeleteLocation(loc.id)}
+                            className="text-xs text-red-400 hover:text-red-600 font-semibold transition-colors"
+                          >
+                            Delete
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+
+            {/* Add location button/form */}
+            <div className="px-5 py-4 border-t border-gray-100">
+              {!showLocationForm ? (
+                <button
+                  onClick={() => setShowLocationForm(true)}
+                  className="text-sm text-green-600 hover:text-green-800 font-semibold"
+                >
+                  + Add Location
+                </button>
+              ) : (
+                <form onSubmit={handleAddLocation} className="space-y-3">
+                  <p className="text-sm font-semibold text-gray-700">New Location</p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Name <span className="text-red-400">*</span></label>
+                      <input
+                        required
+                        value={locationForm.name}
+                        onChange={(e) => setLocationForm((p) => ({ ...p, name: e.target.value }))}
+                        placeholder="e.g. Top shelf"
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Storage Type</label>
+                      <select
+                        value={locationForm.storage_type}
+                        onChange={(e) => setLocationForm((p) => ({ ...p, storage_type: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                      >
+                        {["fridge", "freezer", "pantry", "counter", "other"].map((t) => (
+                          <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Temperature Zone</label>
+                      <select
+                        value={locationForm.temperature_zone}
+                        onChange={(e) => setLocationForm((p) => ({ ...p, temperature_zone: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                      >
+                        {["refrigerated", "frozen", "room_temp", "cool_dry"].map((z) => (
+                          <option key={z} value={z}>{z.replace(/_/g, " ")}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Parent Location</label>
+                      <select
+                        value={locationForm.parent_id}
+                        onChange={(e) => setLocationForm((p) => ({ ...p, parent_id: e.target.value }))}
+                        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                      >
+                        <option value="">None (top-level)</option>
+                        {locations.map((loc) => (
+                          <option key={loc.id} value={loc.id}>{loc.path ?? loc.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="submit"
+                      disabled={locationSaving}
+                      className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+                    >
+                      {locationSaving ? "Adding…" : "Add Location"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowLocationForm(false)}
+                      className="text-sm text-gray-500 hover:text-gray-700 px-3 py-2"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

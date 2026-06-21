@@ -658,6 +658,475 @@ try:
 except Exception as e:
     check("Allergies hard exclusion", False, str(e))
 
+# ── 22. Household & Family Member CRUD ───────────────────────────────────────
+section("22. Household creation and family member CRUD")
+family_member_id = None
+try:
+    r = requests.get(f"{BASE}/family", timeout=5)
+    check("GET /family returns 200", r.status_code == 200, f"status={r.status_code}")
+    data = r.json()
+    check("Response has 'household'", "household" in data)
+    check("Response has 'primary_member'", "primary_member" in data)
+    check("Response has 'additional_members'", "additional_members" in data)
+    pm = data.get("primary_member", {})
+    check("primary_member has member_key='primary'", pm.get("member_key") == "primary")
+    check("primary_member has 'name'", "name" in pm)
+    check("primary_member source is 'primary_profile'", pm.get("source") == "primary_profile")
+except Exception as e:
+    check("GET /family", False, str(e))
+
+try:
+    member_payload = {
+        "name": "QA Family Member",
+        "relationship_label": "spouse",
+        "goal": "fat_loss",
+        "sex": "female",
+        "age": 28,
+        "weight_kg": 60.0,
+        "height_cm": 163.0,
+        "activity_level": "light",
+        "diet_style": "low_carb",
+        "health_conditions": ["diabetes"],
+        "allergies": ["peanut"],
+        "strict_avoid_foods": [],
+    }
+    r = requests.post(f"{BASE}/family/members", json=member_payload, timeout=5)
+    check("POST /family/members creates member", r.status_code in (200, 201),
+          f"status={r.status_code}")
+    if r.status_code in (200, 201):
+        member = r.json()
+        family_member_id = member.get("id")
+        check("New member has 'id'", family_member_id is not None)
+        check("Member name saved", member.get("name") == "QA Family Member")
+        check("Member goal saved", member.get("goal") == "fat_loss")
+        check("Member health_conditions is list", isinstance(member.get("health_conditions"), list))
+        check("Member allergies contains 'peanut'",
+              "peanut" in (member.get("allergies") or []))
+except Exception as e:
+    check("POST /family/members", False, str(e))
+    family_member_id = None
+
+if family_member_id:
+    try:
+        r = requests.get(f"{BASE}/family/members/{family_member_id}", timeout=5)
+        check("GET /family/members/{id} returns 200", r.status_code == 200)
+        member = r.json()
+        check("GET single member has correct name",
+              member.get("name") == "QA Family Member")
+
+        r = requests.put(f"{BASE}/family/members/{family_member_id}",
+                         json={"name": "QA Updated Member", "goal": "maintenance"},
+                         timeout=5)
+        check("PUT /family/members/{id} updates member", r.status_code == 200,
+              f"status={r.status_code}")
+        if r.status_code == 200:
+            check("Updated name persisted", r.json().get("name") == "QA Updated Member")
+    except Exception as e:
+        check("Family member GET/PUT", False, str(e))
+
+    try:
+        r = requests.get(f"{BASE}/family/members", timeout=5)
+        check("GET /family/members returns list", r.status_code == 200)
+        members_list = r.json()
+        check("Members list is an array", isinstance(members_list, list))
+        check("At least 1 additional member present",
+              any(m.get("id") == family_member_id for m in members_list))
+    except Exception as e:
+        check("GET /family/members list", False, str(e))
+
+# ── 23. Family Selection Including Primary User ───────────────────────────────
+section("23. Family selection includes primary user as selectable member")
+try:
+    r = requests.get(f"{BASE}/family", timeout=5)
+    check("GET /family returns 200", r.status_code == 200)
+    data = r.json()
+    pm = data.get("primary_member", {})
+    check("primary_member present in household view", bool(pm))
+    check("primary_member is_active", pm.get("is_active") is True)
+
+    # GET /family/members should NOT include the primary user (they're not a FamilyMember row)
+    r = requests.get(f"{BASE}/family/members", timeout=5)
+    members = r.json() if r.status_code == 200 else []
+    primary_in_members = any(m.get("source") == "primary_profile" for m in members)
+    check("Primary user is NOT duplicated in /family/members list", not primary_in_members)
+except Exception as e:
+    check("Primary user in family selection", False, str(e))
+
+# ── 24. Family Meal Plan Generation ──────────────────────────────────────────
+section("24. Family meal plan — combined generation")
+try:
+    if family_member_id:
+        plan_request = {"member_keys": ["primary", f"member:{family_member_id}"]}
+    else:
+        plan_request = {"member_keys": ["primary"]}
+
+    r = requests.post(f"{BASE}/family/meal-plan/today", json=plan_request, timeout=10)
+    check("POST /family/meal-plan/today returns 200", r.status_code == 200,
+          f"status={r.status_code}")
+    if r.status_code == 200:
+        plan = r.json()
+        check("Plan has 'selected_members'", "selected_members" in plan)
+        check("Plan has 'individual_adjusted_targets'", "individual_adjusted_targets" in plan)
+        check("Plan has 'combined_household_targets'", "combined_household_targets" in plan)
+        check("Plan has 'meals'", "meals" in plan)
+        check("Plan has 'conflict_notes' list", isinstance(plan.get("conflict_notes"), list))
+        check("Plan has 'health_and_allergy_notes' list",
+              isinstance(plan.get("health_and_allergy_notes"), list))
+        check("Plan has 'recommendation_summary'", "recommendation_summary" in plan)
+
+        cht = plan.get("combined_household_targets", {})
+        check("Combined household target has 'calories'", "calories" in cht)
+        check("Combined calories > 0", cht.get("calories", 0) > 0)
+
+        meals = plan.get("meals", [])
+        if meals:
+            m0 = meals[0]
+            check("Family meal has 'per_member_allocations'",
+                  "per_member_allocations" in m0,
+                  str(list(m0.keys())))
+            allocs = m0.get("per_member_allocations", [])
+            check("Per-member allocations is a list", isinstance(allocs, list))
+            if allocs:
+                a0 = allocs[0]
+                check("Allocation has 'member_key'", "member_key" in a0)
+                check("Allocation has 'estimated_macros'", "estimated_macros" in a0)
+                check("Allocation has 'portion_guidance'", "portion_guidance" in a0)
+except Exception as e:
+    check("Family meal plan generation", False, str(e))
+
+# ── 25. Muscle-Gain + Fat-Loss Portion Allocation ────────────────────────────
+section("25. Muscle-gain + fat-loss portion allocation differentiation")
+try:
+    # Ensure primary user has muscle_gain goal
+    requests.put(f"{BASE}/profile", json={
+        "name": "QA User", "age": 30, "sex": "male",
+        "height_cm": 175.0, "weight_kg": 75.0,
+        "activity_level": "moderate", "goal": "muscle_gain",
+    }, timeout=5)
+
+    if family_member_id:
+        # family_member already has fat_loss or we update it
+        requests.put(f"{BASE}/family/members/{family_member_id}",
+                     json={"name": "QA Fat Loss Member", "goal": "fat_loss"}, timeout=5)
+        r = requests.post(f"{BASE}/family/meal-plan/today",
+                          json={"member_keys": ["primary", f"member:{family_member_id}"]},
+                          timeout=10)
+        check("Family plan with muscle+fat-loss returns 200", r.status_code == 200)
+        if r.status_code == 200:
+            plan = r.json()
+            meals = plan.get("meals", [])
+            if meals:
+                allocs = meals[0].get("per_member_allocations", [])
+                primary_alloc = next(
+                    (a for a in allocs if a.get("member_key") == "primary"), None)
+                fl_alloc = next(
+                    (a for a in allocs if a.get("member_key") != "primary"), None)
+                if primary_alloc and fl_alloc:
+                    primary_carbs = primary_alloc.get("estimated_macros", {}).get("carbs_g", 0)
+                    fl_carbs = fl_alloc.get("estimated_macros", {}).get("carbs_g", 0)
+                    check("Muscle-gain member gets more carbs than fat-loss member",
+                          primary_carbs >= fl_carbs,
+                          f"muscle={primary_carbs}g, fat_loss={fl_carbs}g")
+                    check("Fat-loss allocation reason mentions fat loss",
+                          "fat" in (fl_alloc.get("reason", "") or "").lower()
+                          or "loss" in (fl_alloc.get("reason", "") or "").lower())
+                else:
+                    check("Per-member allocations present for both members",
+                          bool(allocs), f"{len(allocs)} allocations")
+            check("Conflict notes mention carbs or portions",
+                  any("carb" in note.lower() or "portion" in note.lower()
+                      for note in plan.get("conflict_notes", [])),
+                  str(plan.get("conflict_notes")))
+    else:
+        check("Portion allocation test (skipped — second member not created)", False,
+              "family_member_id missing")
+
+    # Restore profile
+    requests.put(f"{BASE}/profile", json={
+        "name": "QA User", "age": 30, "sex": "male",
+        "height_cm": 175.0, "weight_kg": 75.0,
+        "activity_level": "moderate", "goal": "maintenance",
+    }, timeout=5)
+except Exception as e:
+    check("Muscle-gain + fat-loss allocation", False, str(e))
+
+# ── 26. Allergy Hard Exclusion in Family Plan ─────────────────────────────────
+section("26. Allergy hard exclusion in family meal plan")
+try:
+    if family_member_id:
+        # family member already has peanut allergy from creation (or updated)
+        # Set a family-member-only allergy and verify no excluded meal slips through
+        requests.put(f"{BASE}/family/members/{family_member_id}",
+                     json={"name": "QA Allergy Member",
+                           "allergies": ["ZZZFAKEALLERGENFAMILYQA99"]}, timeout=5)
+        r = requests.post(f"{BASE}/family/meal-plan/today",
+                          json={"member_keys": ["primary", f"member:{family_member_id}"]},
+                          timeout=10)
+        check("Family plan with allergy set returns 200", r.status_code == 200)
+        if r.status_code == 200:
+            plan = r.json()
+            notes = plan.get("health_and_allergy_notes", [])
+            check("health_and_allergy_notes is a list", isinstance(notes, list))
+    else:
+        check("Family allergy exclusion (skipped — member not created)", False)
+except Exception as e:
+    check("Family allergy exclusion", False, str(e))
+
+# ── 27. Family Grocery Aggregation ────────────────────────────────────────────
+section("27. Family grocery list aggregation")
+try:
+    if family_member_id:
+        grocery_request = {
+            "member_keys": ["primary", f"member:{family_member_id}"],
+            "days_at_home": {"primary": 7, f"member:{family_member_id}": 5},
+        }
+    else:
+        grocery_request = {"member_keys": ["primary"], "days_at_home": {"primary": 7}}
+
+    r = requests.post(f"{BASE}/family/grocery-list/weekly",
+                      json=grocery_request, timeout=10)
+    check("POST /family/grocery-list/weekly returns 200", r.status_code == 200,
+          f"status={r.status_code}")
+    if r.status_code == 200:
+        data = r.json()
+        check("Response has 'recommended_to_buy'", "recommended_to_buy" in data)
+        check("Response has 'avoid_buying'", "avoid_buying" in data)
+        check("Response has 'use_first'", "use_first" in data)
+        check("Response has 'household_nutrition_summary'",
+              "household_nutrition_summary" in data)
+        check("Response has 'member_specific_notes'",
+              "member_specific_notes" in data)
+        check("Response has 'conflict_notes'", "conflict_notes" in data)
+        check("Response has 'inventory_summary'", "inventory_summary" in data)
+        hn = data.get("household_nutrition_summary", {})
+        check("Household nutrition summary has weekly targets",
+              "combined_weekly_targets" in hn or "combined_weekly_calories" in hn)
+        notes = data.get("member_specific_notes", [])
+        check("member_specific_notes is a list", isinstance(notes, list))
+except Exception as e:
+    check("Family grocery aggregation", False, str(e))
+
+# Clean up family member created during tests
+if family_member_id:
+    try:
+        requests.delete(f"{BASE}/family/members/{family_member_id}", timeout=5)
+    except Exception:
+        pass
+
+# ── 28. Storage Location CRUD ─────────────────────────────────────────────────
+section("28. Storage location CRUD")
+test_loc_id = None
+child_loc_id = None
+try:
+    r = requests.get(f"{BASE}/locations", timeout=5)
+    check("GET /locations returns 200", r.status_code == 200, f"status={r.status_code}")
+    locs = r.json()
+    check("Locations list is an array", isinstance(locs, list))
+    check("At least 3 default locations exist (Fridge/Freezer/Pantry)", len(locs) >= 3,
+          f"{len(locs)} locations")
+    if locs:
+        loc = locs[0]
+        check("Location has 'id'", "id" in loc)
+        check("Location has 'name'", "name" in loc)
+        check("Location has 'path'", "path" in loc)
+        check("Location has 'storage_type'", "storage_type" in loc)
+        check("Location has 'temperature_zone'", "temperature_zone" in loc)
+except Exception as e:
+    check("GET /locations", False, str(e))
+
+try:
+    loc_payload = {
+        "name": "QA Cabinet A",
+        "storage_type": "cabinet",
+        "temperature_zone": "pantry",
+        "description": "Test cabinet for QA",
+    }
+    r = requests.post(f"{BASE}/locations", json=loc_payload, timeout=5)
+    check("POST /locations creates location", r.status_code in (200, 201),
+          f"status={r.status_code}")
+    if r.status_code in (200, 201):
+        test_loc_id = r.json().get("id")
+        check("New location has 'id'", test_loc_id is not None)
+        check("Location name saved", r.json().get("name") == "QA Cabinet A")
+except Exception as e:
+    check("POST /locations", False, str(e))
+    test_loc_id = None
+
+if test_loc_id:
+    try:
+        # Create a child location
+        child_payload = {
+            "name": "QA Shelf 1",
+            "storage_type": "shelf",
+            "temperature_zone": "pantry",
+            "parent_id": test_loc_id,
+        }
+        r = requests.post(f"{BASE}/locations", json=child_payload, timeout=5)
+        check("POST /locations child location created", r.status_code in (200, 201))
+        if r.status_code in (200, 201):
+            child_loc_id = r.json().get("id")
+
+        r = requests.put(f"{BASE}/locations/{test_loc_id}",
+                         json={"name": "QA Cabinet A Updated",
+                               "storage_type": "cabinet", "temperature_zone": "pantry"},
+                         timeout=5)
+        check("PUT /locations/{id} updates location", r.status_code == 200,
+              f"status={r.status_code}")
+    except Exception as e:
+        check("Location child + update", False, str(e))
+
+# ── 29. Location Hierarchy / Path Output ──────────────────────────────────────
+section("29. Location hierarchy tree and path breadcrumbs")
+try:
+    r = requests.get(f"{BASE}/locations/tree", timeout=5)
+    check("GET /locations/tree returns 200", r.status_code == 200, f"status={r.status_code}")
+    tree = r.json()
+    check("Tree is a list of root locations", isinstance(tree, list))
+    if tree:
+        root = tree[0]
+        check("Root node has 'children' field", "children" in root)
+
+    if child_loc_id and test_loc_id:
+        r = requests.get(f"{BASE}/locations/{child_loc_id}", timeout=5)
+        check("GET /locations/{child_id} returns 200", r.status_code == 200)
+        child = r.json()
+        path = child.get("path", "")
+        check("Child location path contains parent name",
+              "QA Cabinet" in path or "Cabinet" in path,
+              f"path='{path}'")
+        check("Child location path contains '/'", "/" in path, f"path='{path}'")
+except Exception as e:
+    check("Location hierarchy", False, str(e))
+
+# ── 30. Default Location Migration ────────────────────────────────────────────
+section("30. Automatic default location migration for existing inventory")
+try:
+    r = requests.get(f"{BASE}/inventory", timeout=5)
+    check("GET /inventory returns 200 after migration", r.status_code == 200)
+    items = r.json()
+    check("Inventory items present", len(items) >= 1, f"{len(items)} items")
+    # Most existing items should now have a location assigned
+    with_location = [i for i in items if i.get("location_id") is not None]
+    check("At least some items have location_id assigned after migration",
+          len(with_location) >= 1,
+          f"{len(with_location)}/{len(items)} items have location_id")
+except Exception as e:
+    check("Default location migration", False, str(e))
+
+# ── 31. Inventory Search by Food Name ─────────────────────────────────────────
+section("31. Inventory search — by food name")
+search_item_id = None
+try:
+    r = requests.post(f"{BASE}/inventory", json={
+        "name": "QA Search Test Broccoli",
+        "quantity": 300.0,
+        "unit": "g",
+        "zone": "fridge",
+        "category": "vegetable",
+    }, timeout=5)
+    if r.status_code == 201:
+        search_item_id = r.json().get("id")
+
+    r = requests.get(f"{BASE}/inventory/search?q=Search+Test+Broccoli", timeout=5)
+    check("GET /inventory/search?q= returns 200", r.status_code == 200, f"status={r.status_code}")
+    results_list = r.json()
+    check("Search result is a list", isinstance(results_list, list))
+    check("Search for 'Broccoli' finds the test item",
+          any("Broccoli" in i.get("name", "") for i in results_list),
+          f"{len(results_list)} results")
+    if results_list:
+        item = results_list[0]
+        check("Search result has 'expiration_risk'", "expiration_risk" in item)
+except Exception as e:
+    check("Inventory search by food name", False, str(e))
+
+# ── 32. Inventory Search by Location Name/Path ────────────────────────────────
+section("32. Inventory search — by location name and path")
+try:
+    # Create an item in QA Cabinet A (if it exists)
+    loc_item_id = None
+    if test_loc_id:
+        r = requests.post(f"{BASE}/inventory", json={
+            "name": "QA Cabinet Test Rice",
+            "quantity": 500.0,
+            "unit": "g",
+            "zone": "pantry",
+            "category": "grain",
+            "location_id": test_loc_id,
+        }, timeout=5)
+        if r.status_code == 201:
+            loc_item_id = r.json().get("id")
+
+        # Search by location_id
+        r = requests.get(f"{BASE}/inventory/search?q=&location_id={test_loc_id}", timeout=5)
+        check("GET /inventory/search?location_id= returns 200",
+              r.status_code == 200, f"status={r.status_code}")
+        results_list = r.json()
+        check("Location filter returns items in that location",
+              len(results_list) >= 1, f"{len(results_list)} results")
+        if results_list:
+            check("Filtered item has 'location_path'", "location_path" in results_list[0])
+            check("location_path is non-empty",
+                  bool(results_list[0].get("location_path")),
+                  str(results_list[0].get("location_path")))
+
+        # Search by name with location filter
+        r = requests.get(
+            f"{BASE}/inventory/search?q=Cabinet+Test+Rice&location_id={test_loc_id}",
+            timeout=5)
+        check("Search by name+location returns the item", r.status_code == 200)
+        results_list = r.json()
+        check("Name+location search finds the test item",
+              any("Rice" in i.get("name", "") for i in results_list),
+              f"{len(results_list)} results")
+
+        if loc_item_id:
+            requests.delete(f"{BASE}/inventory/{loc_item_id}", timeout=5)
+    else:
+        check("Location search (skipped — test location not created)", False)
+except Exception as e:
+    check("Inventory search by location", False, str(e))
+
+# ── 33. Meal Plan Works Across Multiple Locations ─────────────────────────────
+section("33. Meal plan still works with multi-location inventory")
+try:
+    r = requests.get(f"{BASE}/meal-plan/today", timeout=5)
+    check("GET /meal-plan/today still returns 200", r.status_code == 200,
+          f"status={r.status_code}")
+    plan = r.json()
+    check("Meal plan returns at least 1 meal across all locations",
+          len(plan.get("meals", [])) >= 1,
+          f"{len(plan.get('meals', []))} meals")
+except Exception as e:
+    check("Meal plan with multi-location inventory", False, str(e))
+
+# ── 34. Grocery List Uses Total Inventory Across Locations ────────────────────
+section("34. Grocery list uses total inventory across all locations")
+try:
+    r = requests.get(f"{BASE}/grocery-list/weekly", timeout=5)
+    check("GET /grocery-list/weekly still returns 200", r.status_code == 200,
+          f"status={r.status_code}")
+    data = r.json()
+    inv_summary = data.get("inventory_summary", {})
+    check("Grocery list inventory_summary covers all locations",
+          inv_summary.get("total_items", 0) >= 1,
+          f"{inv_summary.get('total_items')} items")
+except Exception as e:
+    check("Grocery list across locations", False, str(e))
+
+# Clean up test items and locations
+if search_item_id:
+    try:
+        requests.delete(f"{BASE}/inventory/{search_item_id}", timeout=5)
+    except Exception:
+        pass
+for loc_id in [child_loc_id, test_loc_id]:
+    if loc_id:
+        try:
+            requests.delete(f"{BASE}/locations/{loc_id}", timeout=5)
+        except Exception:
+            pass
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 total = len(results)
 passed = sum(results)

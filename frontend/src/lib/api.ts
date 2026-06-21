@@ -109,3 +109,26 @@ export async function logManualMeal(data: unknown) {
 export async function fetchNutritionAnalysis() {
   try { return await request("/nutrition-log/analysis/today"); } catch { return null; }
 }
+
+// ── Family ────────────────────────────────────────────────────────────────
+export async function fetchFamily() { try { return await request("/family"); } catch { return null; } }
+export async function fetchFamilyMembers() { try { return await request("/family/members"); } catch { return []; } }
+export async function createFamilyMember(data: unknown) { return request("/family/members", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }); }
+export async function updateFamilyMember(id: number, data: unknown) { return request(`/family/members/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }); }
+export async function deleteFamilyMember(id: number) { return request(`/family/members/${id}`, { method: "DELETE" }); }
+export async function fetchFamilyMealPlan(memberKeys: string[]) { return request("/family/meal-plan/today", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ member_keys: memberKeys }) }); }
+export async function fetchFamilyGroceryList(memberKeys: string[], daysAtHome: Record<string, number>) { return request("/family/grocery-list/weekly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ member_keys: memberKeys, days_at_home: daysAtHome }) }); }
+
+// ── Locations ─────────────────────────────────────────────────────────────
+export async function fetchLocations() { try { return await request("/locations"); } catch { return []; } }
+export async function fetchLocationsTree() { try { return await request("/locations/tree"); } catch { return []; } }
+export async function createLocation(data: unknown) { return request("/locations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }); }
+export async function updateLocation(id: number, data: unknown) { return request(`/locations/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }); }
+export async function deleteLocation(id: number) { return request(`/locations/${id}`, { method: "DELETE" }); }
+
+// ── Inventory search ──────────────────────────────────────────────────────
+export async function searchInventory(q: string, locationId?: number) {
+  const params = new URLSearchParams({ q });
+  if (locationId != null) params.append("location_id", String(locationId));
+  try { return await request(`/inventory/search?${params}`); } catch { return []; }
+}

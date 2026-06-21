@@ -19,3 +19,4 @@ class InventoryItem(Base):
     carbs_per_100g = Column(Float, nullable=True)
     fat_per_100g = Column(Float, nullable=True)
     notes = Column(String, nullable=True)
+    location_id = Column(Integer, nullable=True)  # FK to storage_locations.id (no hard FK)

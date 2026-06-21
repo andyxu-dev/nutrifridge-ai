@@ -4,10 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/dashboard", label: "Dashboard" },
-  { href: "/profile",   label: "Profile" },
-  { href: "/inventory", label: "Inventory" },
+  { href: "/dashboard",   label: "Dashboard" },
+  { href: "/profile",     label: "Profile" },
+  { href: "/inventory",   label: "Inventory" },
   { href: "/grocery-list", label: "Grocery List" },
+  { href: "/family",      label: "Family" },
 ];
 
 export default function Navbar() {

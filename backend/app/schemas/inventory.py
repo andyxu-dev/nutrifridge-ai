@@ -34,6 +34,7 @@ class InventoryBase(BaseModel):
     carbs_per_100g: Optional[float] = None
     fat_per_100g: Optional[float] = None
     notes: Optional[str] = None
+    location_id: Optional[int] = None
 
 
 class InventoryCreate(InventoryBase):
@@ -47,5 +48,7 @@ class InventoryUpdate(InventoryBase):
 class InventoryResponse(InventoryBase):
     id: int
     expiration_risk: Optional[str] = None
+    location_path: Optional[str] = None
+    location_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
