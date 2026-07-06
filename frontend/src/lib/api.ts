@@ -118,6 +118,8 @@ export async function updateFamilyMember(id: number, data: unknown) { return req
 export async function deleteFamilyMember(id: number) { return request(`/family/members/${id}`, { method: "DELETE" }); }
 export async function fetchFamilyMealPlan(memberKeys: string[]) { return request("/family/meal-plan/today", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ member_keys: memberKeys }) }); }
 export async function fetchFamilyGroceryList(memberKeys: string[], daysAtHome: Record<string, number>) { return request("/family/grocery-list/weekly", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ member_keys: memberKeys, days_at_home: daysAtHome }) }); }
+export async function fetchFamilySchedule() { try { return await request("/family/schedule"); } catch { return null; } }
+export async function updateFamilySchedule(data: unknown) { return request("/family/schedule", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) }); }
 
 // ── Locations ─────────────────────────────────────────────────────────────
 export async function fetchLocations() { try { return await request("/locations"); } catch { return []; } }
@@ -131,4 +133,34 @@ export async function searchInventory(q: string, locationId?: number) {
   const params = new URLSearchParams({ q });
   if (locationId != null) params.append("location_id", String(locationId));
   try { return await request(`/inventory/search?${params}`); } catch { return []; }
+}
+
+// ── AI Nutrition Assistant ────────────────────────────────────────────────
+export async function assistantChat(payload: {
+  message: string;
+  conversation_id?: string;
+  mode?: "rag" | "agent";
+  confirm_log_meal?: boolean;
+}) {
+  return request("/assistant/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function assistantIngest(force = false) {
+  return request("/assistant/ingest", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ force }),
+  });
+}
+
+export async function assistantSources() {
+  try { return await request("/assistant/sources"); } catch { return { total_sources: 0, sources: [] }; }
+}
+
+export async function assistantConversation(conversationId: string) {
+  try { return await request(`/assistant/conversations/${conversationId}`); } catch { return null; }
 }

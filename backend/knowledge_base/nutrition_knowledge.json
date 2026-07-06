@@ -1,0 +1,364 @@
+[
+  {
+    "source_id": "fda_food_safety_temps",
+    "title": "Safe Minimum Internal Cooking Temperatures",
+    "organization": "U.S. Food & Drug Administration (FDA)",
+    "url": "https://www.fda.gov/food/buy-store-serve-safe-food/safe-minimum-internal-temperatures",
+    "topic": "food_safety",
+    "chunks": [
+      {
+        "chunk_id": "fda_temps_1",
+        "text": "Poultry (chicken, turkey, duck): Cook to a minimum internal temperature of 165°F (74°C). This applies to whole birds, ground poultry, and stuffing. Use a food thermometer inserted in the thickest part of the meat, away from bone.",
+        "keywords": ["chicken", "turkey", "poultry", "temperature", "cooking", "165", "food safety"]
+      },
+      {
+        "chunk_id": "fda_temps_2",
+        "text": "Ground meats (beef, pork, lamb, veal): Cook to 160°F (71°C). Whole cuts of beef, pork, lamb, and veal steaks, roasts, and chops: Cook to 145°F (63°C) and allow to rest for at least 3 minutes before carving or consuming.",
+        "keywords": ["beef", "pork", "lamb", "ground meat", "temperature", "cooking", "steak"]
+      },
+      {
+        "chunk_id": "fda_temps_3",
+        "text": "Fish and shellfish: Cook to 145°F (63°C) or until flesh is opaque and separates easily with a fork. Shrimp, lobster, and crab should be cooked until the flesh is pearly or white and opaque. Clams, oysters, and mussels should be cooked until shells open.",
+        "keywords": ["fish", "salmon", "shrimp", "seafood", "shellfish", "temperature", "cooking"]
+      },
+      {
+        "chunk_id": "fda_temps_4",
+        "text": "Eggs: Cook until the yolk and white are firm. Egg dishes such as casseroles: Cook to 160°F (71°C). Leftovers and casseroles: Reheat to 165°F (74°C).",
+        "keywords": ["eggs", "temperature", "cooking", "egg dishes"]
+      }
+    ]
+  },
+  {
+    "source_id": "fda_food_storage",
+    "title": "Refrigerator and Freezer Food Storage Chart",
+    "organization": "U.S. Food & Drug Administration (FDA)",
+    "url": "https://www.fda.gov/food/buy-store-serve-safe-food/refrigerator-freezer-food-storage-chart",
+    "topic": "food_storage",
+    "chunks": [
+      {
+        "chunk_id": "fda_storage_1",
+        "text": "Refrigerator temperature should be kept at or below 40°F (4°C). Freezer temperature should be 0°F (-18°C) or below. The 'danger zone' for bacterial growth is between 40°F and 140°F (4°C to 60°C). Never leave perishable foods in this temperature range for more than 2 hours (1 hour if above 90°F).",
+        "keywords": ["refrigerator", "temperature", "freezer", "danger zone", "bacteria", "storage", "40F", "food safety"]
+      },
+      {
+        "chunk_id": "fda_storage_2",
+        "text": "Raw chicken and turkey: 1–2 days in the refrigerator; 9 months (pieces) to 1 year (whole) in the freezer. Cooked poultry: 3–4 days in the refrigerator; 2–6 months in the freezer.",
+        "keywords": ["chicken", "turkey", "raw", "cooked", "storage", "refrigerator", "freezer", "days", "poultry"]
+      },
+      {
+        "chunk_id": "fda_storage_3",
+        "text": "Raw beef, lamb, and veal (steaks and chops): 3–5 days in the refrigerator; 6–12 months in the freezer. Ground beef: 1–2 days in the refrigerator; 3–4 months in the freezer. Cooked beef: 3–4 days in the refrigerator; 2–3 months in the freezer.",
+        "keywords": ["beef", "lamb", "ground beef", "steak", "storage", "refrigerator", "freezer"]
+      },
+      {
+        "chunk_id": "fda_storage_4",
+        "text": "Fish (lean, such as cod, flounder, sole): 1–2 days refrigerator; up to 6 months in freezer. Fish (fatty, such as salmon, tuna): 1–2 days refrigerator; 2–3 months in freezer. Cooked fish: 3–4 days in refrigerator; 4–6 months in freezer.",
+        "keywords": ["fish", "salmon", "cod", "tuna", "seafood", "storage", "refrigerator", "freezer"]
+      },
+      {
+        "chunk_id": "fda_storage_5",
+        "text": "Eggs (in shell): 3–5 weeks in refrigerator. Hard-cooked eggs: 1 week in refrigerator. Egg substitutes (opened): 3 days; (unopened): 10 days. Milk: 1 week. Cheese (hard, such as cheddar, Swiss): 3–4 weeks opened, 6 months unopened.",
+        "keywords": ["eggs", "milk", "cheese", "dairy", "storage", "refrigerator"]
+      },
+      {
+        "chunk_id": "fda_storage_6",
+        "text": "Leafy greens (lettuce, spinach, kale): 3–7 days in the refrigerator. Store unwashed in a loosely closed bag with a paper towel to absorb moisture. Broccoli, cauliflower, cabbage: 3–5 days. Berries: 2–3 days. Apples: 4–6 weeks refrigerated. Bananas: 2–3 days at room temperature (do not refrigerate until ripe).",
+        "keywords": ["spinach", "lettuce", "greens", "broccoli", "berries", "apple", "banana", "vegetables", "fruit", "storage", "refrigerator"]
+      },
+      {
+        "chunk_id": "fda_storage_7",
+        "text": "Cooked rice: 3–5 days in the refrigerator, up to 6 months in the freezer. Cool rice quickly after cooking — within 1 hour — before refrigerating. Reheat to 165°F (74°C) before serving. Never leave cooked rice at room temperature for more than 2 hours, as Bacillus cereus bacteria can produce heat-resistant toxins.",
+        "keywords": ["rice", "cooked rice", "storage", "refrigerator", "bacteria", "food safety", "reheat"]
+      },
+      {
+        "chunk_id": "fda_storage_8",
+        "text": "Leftovers: Store within 2 hours of cooking in shallow airtight containers. Use within 3–4 days or freeze for up to 3–4 months. Reheat all leftovers to an internal temperature of 165°F (74°C).",
+        "keywords": ["leftovers", "storage", "refrigerator", "freezer", "reheat", "food safety"]
+      }
+    ]
+  },
+  {
+    "source_id": "usda_date_labels",
+    "title": "Food Product Dating — Understanding Date Labels",
+    "organization": "USDA Food Safety and Inspection Service (FSIS)",
+    "url": "https://www.fsis.usda.gov/food-safety/safe-food-handling-and-preparation/food-safety-basics/food-product-dating",
+    "topic": "food_safety",
+    "chunks": [
+      {
+        "chunk_id": "usda_dates_1",
+        "text": "'Best if Used By/Before' indicates when a product will be of best flavor or quality. It is not a purchase or safety date. Foods may still be safe to eat after this date if stored properly, though quality may decline.",
+        "keywords": ["best by", "best before", "expiration", "date", "food safety", "quality"]
+      },
+      {
+        "chunk_id": "usda_dates_2",
+        "text": "'Use-By' date is the last date recommended for use of the product at peak quality. For infant formula, 'Use By' should be followed strictly. For most other foods, quality may decline after this date but the food may still be safe if stored properly and within a reasonable time frame.",
+        "keywords": ["use by", "expiration", "date", "food safety", "quality", "infant formula"]
+      },
+      {
+        "chunk_id": "usda_dates_3",
+        "text": "Sell-By dates guide retailers on how long to display products for sale. Consumers should buy the product before this date, but the food remains safe to use for a period after purchase if stored correctly. Example: chicken purchased by the sell-by date can be stored in the refrigerator for 1–2 days, or frozen indefinitely.",
+        "keywords": ["sell by", "date", "food safety", "chicken", "purchase"]
+      },
+      {
+        "chunk_id": "usda_dates_4",
+        "text": "When in doubt about food safety, follow the rule: 'When in doubt, throw it out.' Signs that food has spoiled include off odors, sliminess, mold, or unusual color changes. These are stronger indicators than date labels alone. Some pathogens like Listeria can grow in refrigerated conditions without causing visible spoilage.",
+        "keywords": ["spoiled", "food safety", "mold", "odor", "listeria", "bacteria", "when in doubt throw it out"]
+      }
+    ]
+  },
+  {
+    "source_id": "usda_dietary_guidelines_2020",
+    "title": "Dietary Guidelines for Americans 2020–2025",
+    "organization": "USDA and U.S. Department of Health and Human Services (HHS)",
+    "url": "https://www.dietaryguidelines.gov/resources/2020-2025-dietary-guidelines-online-materials",
+    "topic": "nutrition",
+    "chunks": [
+      {
+        "chunk_id": "dga_macros_1",
+        "text": "Recommended macronutrient distribution ranges for adults: Carbohydrates: 45–65% of total calories. Total fat: 20–35% of total calories. Protein: 10–35% of total calories. For a 2,000-calorie diet, this means approximately 225–325g carbohydrates, 44–78g fat, and 50–175g protein per day.",
+        "keywords": ["macronutrients", "carbohydrates", "fat", "protein", "calories", "dietary guidelines", "ranges", "nutrition targets"]
+      },
+      {
+        "chunk_id": "dga_macros_2",
+        "text": "Dietary fiber: Adults should consume at least 28g per day (based on 2,000 calories). Fiber helps maintain bowel health, lowers blood cholesterol, controls blood sugar, and aids weight management. Good sources include beans, legumes, whole grains, fruits, and vegetables.",
+        "keywords": ["fiber", "dietary fiber", "bowel health", "cholesterol", "blood sugar", "beans", "whole grains", "vegetables", "fruit"]
+      },
+      {
+        "chunk_id": "dga_sodium_1",
+        "text": "Sodium: Limit to less than 2,300 milligrams (mg) per day for adults. Individuals with hypertension or prehypertension, African Americans, and those 51 and older should limit to 1,500mg/day. High sodium intake is associated with elevated blood pressure and cardiovascular disease risk.",
+        "keywords": ["sodium", "salt", "hypertension", "blood pressure", "cardiovascular", "2300mg", "dietary guidelines"]
+      },
+      {
+        "chunk_id": "dga_sugar_1",
+        "text": "Added sugars: Limit to less than 10% of total calories per day. For a 2,000-calorie diet, this is less than 200 calories or 50g of added sugar. Naturally occurring sugars in fruit and dairy do not count as 'added sugars.' High added sugar intake is linked to obesity, type 2 diabetes, and dental caries.",
+        "keywords": ["added sugar", "sugar", "diabetes", "obesity", "10%", "dietary guidelines", "sweetened beverages"]
+      },
+      {
+        "chunk_id": "dga_protein_1",
+        "text": "Protein foods recommended by the Dietary Guidelines include lean meats, poultry, seafood, eggs, legumes (beans, peas), soy products, nuts, and seeds. Seafood is recommended at least 8 ounces per week. Red meat and processed meat should be limited as part of a healthy dietary pattern.",
+        "keywords": ["protein", "lean meat", "poultry", "seafood", "eggs", "legumes", "beans", "nuts", "red meat", "dietary guidelines"]
+      },
+      {
+        "chunk_id": "dga_fruits_veg_1",
+        "text": "Vegetables and fruits: Fill at least half of your plate with vegetables and fruits at each meal. Aim for a variety of colorful vegetables including dark green, red and orange vegetables, and beans and peas. Whole fruit is preferred over fruit juice. Fruit juice contains little fiber compared to whole fruit.",
+        "keywords": ["vegetables", "fruits", "fruit", "half plate", "dietary guidelines", "variety", "dark green", "fiber"]
+      }
+    ]
+  },
+  {
+    "source_id": "nih_diabetes_diet",
+    "title": "Diabetes Diet, Eating, and Physical Activity",
+    "organization": "National Institute of Diabetes and Digestive and Kidney Diseases (NIDDK/NIH)",
+    "url": "https://www.niddk.nih.gov/health-information/diabetes/overview/diet-eating-physical-activity",
+    "topic": "health_conditions",
+    "chunks": [
+      {
+        "chunk_id": "nih_diabetes_1",
+        "text": "For people with diabetes or prediabetes, choosing foods with a lower glycemic index (GI) helps prevent blood sugar spikes. Foods lower on the glycemic index include non-starchy vegetables (broccoli, leafy greens), legumes, whole grains, and most fruits. Foods higher on the GI include white bread, white rice, sugary drinks, and processed snacks.",
+        "keywords": ["diabetes", "prediabetes", "blood sugar", "glycemic index", "carbohydrates", "broccoli", "vegetables", "white rice", "white bread", "whole grains"]
+      },
+      {
+        "chunk_id": "nih_diabetes_2",
+        "text": "Carbohydrate management is key for diabetes. Aim to spread carbohydrate intake evenly throughout the day rather than consuming large amounts at one meal. Many people with type 2 diabetes benefit from keeping carbohydrate intake to 45–60g per meal. High-fiber carbohydrates are preferred as they cause slower blood sugar rises.",
+        "keywords": ["diabetes", "carbohydrates", "blood sugar", "fiber", "meal planning", "carb counting", "type 2"]
+      },
+      {
+        "chunk_id": "nih_diabetes_3",
+        "text": "Recommended foods for diabetes management: Non-starchy vegetables (spinach, broccoli, green beans, tomatoes), whole grains (whole wheat bread, oats, quinoa, brown rice), lean protein (chicken, fish, eggs, legumes), healthy fats (avocado, nuts, olive oil), and low-fat dairy. Limit: white rice, white bread, pasta, sugary drinks, and high-sodium processed foods.",
+        "keywords": ["diabetes", "spinach", "broccoli", "whole grains", "oats", "quinoa", "chicken", "fish", "avocado", "nuts", "recommended foods"]
+      }
+    ]
+  },
+  {
+    "source_id": "nih_cholesterol_diet",
+    "title": "High Blood Cholesterol — Diet and Lifestyle Changes",
+    "organization": "National Heart, Lung, and Blood Institute (NHLBI/NIH)",
+    "url": "https://www.nhlbi.nih.gov/health/high-blood-cholesterol/treatment",
+    "topic": "health_conditions",
+    "chunks": [
+      {
+        "chunk_id": "nih_chol_1",
+        "text": "To lower LDL (bad) cholesterol, reduce saturated fat intake to less than 7% of total calories and trans fat to less than 1% of total calories. Saturated fats are found in fatty meats, full-fat dairy, butter, and coconut oil. Trans fats are found in partially hydrogenated oils used in some processed foods.",
+        "keywords": ["cholesterol", "LDL", "saturated fat", "trans fat", "high cholesterol", "butter", "dairy", "fatty meat"]
+      },
+      {
+        "chunk_id": "nih_chol_2",
+        "text": "Foods that help lower LDL cholesterol: Oats and oat bran, barley, beans and legumes, eggplant and okra, nuts (almonds and walnuts), vegetable oils (canola, sunflower), fruits (apples, grapes, strawberries, citrus), foods fortified with sterols/stanols, and fatty fish (omega-3 fatty acids). Soluble fiber from oats can reduce LDL by 3–7%.",
+        "keywords": ["cholesterol", "LDL", "oats", "fiber", "beans", "nuts", "almonds", "walnuts", "salmon", "fish", "omega-3", "apple", "fruits"]
+      },
+      {
+        "chunk_id": "nih_chol_3",
+        "text": "Foods to limit with high cholesterol: Fatty cuts of beef, pork, or lamb; full-fat dairy products (butter, cheese, ice cream, whole milk); organ meats (liver, kidney); shellfish (shrimp, lobster); commercially fried foods; baked goods made with lard or shortening.",
+        "keywords": ["cholesterol", "saturated fat", "beef", "pork", "butter", "cheese", "cream", "organ meat", "fried foods", "limit"]
+      }
+    ]
+  },
+  {
+    "source_id": "nih_hypertension_diet",
+    "title": "DASH Eating Plan for High Blood Pressure",
+    "organization": "National Heart, Lung, and Blood Institute (NHLBI/NIH)",
+    "url": "https://www.nhlbi.nih.gov/education/dash-eating-plan",
+    "topic": "health_conditions",
+    "chunks": [
+      {
+        "chunk_id": "nih_htn_1",
+        "text": "The DASH (Dietary Approaches to Stop Hypertension) diet is recommended for managing high blood pressure. It emphasizes fruits, vegetables, whole grains, lean protein, and low-fat dairy. It limits sodium, saturated fat, and added sugars. Following DASH can lower systolic blood pressure by 8–14 mmHg.",
+        "keywords": ["hypertension", "high blood pressure", "DASH", "sodium", "blood pressure", "diet", "fruits", "vegetables", "whole grains"]
+      },
+      {
+        "chunk_id": "nih_htn_2",
+        "text": "Sodium reduction is critical for hypertension. Limit to 1,500–2,300mg per day. Practical tips: Cook at home using herbs and spices instead of salt; choose 'no salt added' canned goods; avoid processed meats (deli meat, hot dogs, bacon); limit condiments (soy sauce, ketchup, pickles); rinse canned beans before use.",
+        "keywords": ["hypertension", "sodium", "salt", "processed meat", "soy sauce", "canned", "cooking", "high blood pressure"]
+      },
+      {
+        "chunk_id": "nih_htn_3",
+        "text": "Potassium-rich foods help counteract the effects of sodium on blood pressure: bananas, potatoes, tomatoes, spinach, avocados, salmon, yogurt, and beans. Calcium and magnesium also help regulate blood pressure — found in dairy, leafy greens, nuts, and whole grains.",
+        "keywords": ["hypertension", "potassium", "banana", "spinach", "avocado", "tomato", "salmon", "blood pressure", "calcium", "magnesium"]
+      }
+    ]
+  },
+  {
+    "source_id": "nih_kidney_disease_diet",
+    "title": "Nutrition for Advanced Chronic Kidney Disease in Adults",
+    "organization": "National Institute of Diabetes and Digestive and Kidney Diseases (NIDDK/NIH)",
+    "url": "https://www.niddk.nih.gov/health-information/kidney-disease/chronic-kidney-disease-ckd/eating-nutrition",
+    "topic": "health_conditions",
+    "chunks": [
+      {
+        "chunk_id": "nih_kidney_1",
+        "text": "For people with chronic kidney disease (CKD), protein restriction is important to reduce the workload on the kidneys. Many people with CKD limit protein to 0.6–0.8g per kilogram of body weight per day (compared to 0.8–1.0g/kg for healthy adults). Choose high-quality protein sources: eggs, fish, poultry, and lean meat in controlled portions.",
+        "keywords": ["kidney disease", "CKD", "protein", "protein restriction", "0.8g/kg", "eggs", "fish", "chicken", "protein target"]
+      },
+      {
+        "chunk_id": "nih_kidney_2",
+        "text": "Potassium restriction: In advanced CKD, the kidneys cannot remove excess potassium, which can cause heart problems. High-potassium foods to limit include bananas, oranges, potatoes, tomatoes, avocados, and dairy. Lower-potassium alternatives: apples, blueberries, grapes, rice, pasta, bread, and green beans.",
+        "keywords": ["kidney disease", "CKD", "potassium", "banana", "potato", "tomato", "avocado", "restriction", "apple", "blueberry"]
+      },
+      {
+        "chunk_id": "nih_kidney_3",
+        "text": "Phosphorus restriction is often needed in CKD as kidneys struggle to remove it. High-phosphorus foods to limit: dairy products, nuts, beans, whole grains, processed foods with phosphate additives. Lower-phosphorus choices: rice, pasta, white bread, fresh fruits, and most vegetables (avoiding those high in potassium).",
+        "keywords": ["kidney disease", "CKD", "phosphorus", "dairy", "nuts", "beans", "whole grains", "processed foods", "restriction"]
+      }
+    ]
+  },
+  {
+    "source_id": "nih_fatty_liver_diet",
+    "title": "Eating, Diet, and Nutrition for NAFLD",
+    "organization": "National Institute of Diabetes and Digestive and Kidney Diseases (NIDDK/NIH)",
+    "url": "https://www.niddk.nih.gov/health-information/liver-disease/nafld-nash/eating-diet-nutrition",
+    "topic": "health_conditions",
+    "chunks": [
+      {
+        "chunk_id": "nih_fatty_liver_1",
+        "text": "For non-alcoholic fatty liver disease (NAFLD), weight loss through a reduced-calorie diet and increased physical activity is the primary treatment. Even modest weight loss of 3–5% can reduce liver fat. A deficit of 500–1000 calories per day is generally recommended.",
+        "keywords": ["fatty liver", "NAFLD", "weight loss", "calorie deficit", "liver fat", "diet"]
+      },
+      {
+        "chunk_id": "nih_fatty_liver_2",
+        "text": "Foods to favor for fatty liver: high-fiber vegetables (broccoli, Brussels sprouts), whole grains (oats, brown rice), lean protein (chicken breast, fish, legumes), omega-3 fatty acids (salmon, sardines, walnuts), and coffee (which has been associated with reduced liver inflammation). Olive oil and avocado are good fat sources.",
+        "keywords": ["fatty liver", "NAFLD", "broccoli", "whole grains", "oats", "chicken", "salmon", "omega-3", "olive oil", "avocado", "recommended"]
+      },
+      {
+        "chunk_id": "nih_fatty_liver_3",
+        "text": "Foods to limit or avoid with fatty liver: added sugars (especially fructose), sugary beverages, white bread and refined carbohydrates, saturated fat (fatty red meat, full-fat dairy), alcohol, and processed snack foods. High fructose corn syrup is particularly associated with liver fat accumulation.",
+        "keywords": ["fatty liver", "NAFLD", "sugar", "fructose", "saturated fat", "red meat", "dairy", "alcohol", "processed foods", "limit"]
+      }
+    ]
+  },
+  {
+    "source_id": "usda_protein_foods",
+    "title": "Protein Foods — ChooseMyPlate",
+    "organization": "USDA ChooseMyPlate",
+    "url": "https://www.myplate.gov/eat-healthy/protein-foods",
+    "topic": "nutrition",
+    "chunks": [
+      {
+        "chunk_id": "usda_protein_1",
+        "text": "Protein foods group includes all foods made from seafood; meat, poultry, and eggs; beans, peas, and lentils; and nuts, seeds, and soy products. Current dietary guidelines recommend adults eat 5–7 ounces of protein foods daily (based on 2,000 calories). Seafood should account for at least 8 ounces per week.",
+        "keywords": ["protein", "seafood", "meat", "poultry", "eggs", "beans", "lentils", "nuts", "soy", "serving size", "ounces"]
+      },
+      {
+        "chunk_id": "usda_protein_2",
+        "text": "Lean protein sources with lower saturated fat: chicken breast (no skin), turkey, canned tuna, salmon, tilapia, cod, shrimp, egg whites, tofu, tempeh, lentils, black beans, and chickpeas. These provide high protein with minimal saturated fat, making them suitable for most dietary patterns.",
+        "keywords": ["lean protein", "chicken breast", "turkey", "tuna", "salmon", "tilapia", "shrimp", "eggs", "tofu", "lentils", "chickpeas", "low fat", "saturated fat"]
+      },
+      {
+        "chunk_id": "usda_protein_3",
+        "text": "Protein content of common foods (approximate per 100g/3.5oz): Chicken breast (cooked): 31g protein, 165 kcal. Salmon: 25g protein, 208 kcal. Eggs (whole, large): 13g protein per 100g. Canned tuna: 26g protein. Tofu (firm): 8g protein. Black beans (cooked): 9g protein. Greek yogurt (plain): 10g protein.",
+        "keywords": ["protein", "chicken breast", "salmon", "eggs", "tuna", "tofu", "black beans", "greek yogurt", "nutrition facts", "calories", "grams"]
+      }
+    ]
+  },
+  {
+    "source_id": "cdc_food_storage_tips",
+    "title": "Food Safety Tips — Proper Food Storage",
+    "organization": "Centers for Disease Control and Prevention (CDC)",
+    "url": "https://www.cdc.gov/foodsafety/foods/index.html",
+    "topic": "food_storage",
+    "chunks": [
+      {
+        "chunk_id": "cdc_storage_1",
+        "text": "Proper food storage prevents foodborne illness: Keep raw meat, poultry, and seafood separate from ready-to-eat foods in the refrigerator. Store raw meat on the lowest shelf. Use airtight containers for leftovers. Label containers with the date. Clean and disinfect surfaces that raw meat has touched.",
+        "keywords": ["food storage", "cross contamination", "raw meat", "poultry", "refrigerator", "airtight", "leftovers", "food safety"]
+      },
+      {
+        "chunk_id": "cdc_storage_2",
+        "text": "Thawing foods safely: Do not thaw food on the counter at room temperature — this allows the outer surface to enter the bacterial danger zone while the inside is still frozen. Safe methods: (1) In the refrigerator — safest but takes 24 hours per 5 pounds. (2) In cold water, changing every 30 minutes. (3) In the microwave — cook immediately after.",
+        "keywords": ["thawing", "defrost", "frozen", "bacteria", "food safety", "refrigerator", "microwave", "room temperature"]
+      },
+      {
+        "chunk_id": "cdc_storage_3",
+        "text": "High-risk foods that require extra attention: Raw or undercooked poultry (Salmonella), raw or undercooked ground beef (E. coli), raw sprouts (E. coli, Salmonella), raw shellfish (Vibrio, norovirus), unpasteurized milk and juice (Listeria, E. coli), and foods made with raw eggs (Salmonella).",
+        "keywords": ["salmonella", "e. coli", "listeria", "food safety", "high risk", "poultry", "ground beef", "sprouts", "shellfish", "raw eggs", "bacteria"]
+      }
+    ]
+  },
+  {
+    "source_id": "nih_weight_management",
+    "title": "Healthy Weight, Nutrition, and Physical Activity",
+    "organization": "Centers for Disease Control and Prevention (CDC)",
+    "url": "https://www.cdc.gov/healthyweight/healthy_eating/index.html",
+    "topic": "nutrition",
+    "chunks": [
+      {
+        "chunk_id": "cdc_weight_1",
+        "text": "For weight loss, a calorie deficit of 500–750 calories per day is generally recommended, resulting in approximately 0.5–0.75kg (1–1.5 lbs) weight loss per week. Very low-calorie diets (below 1,200 calories for women and 1,500 calories for men) should only be followed under medical supervision.",
+        "keywords": ["weight loss", "calorie deficit", "500 calories", "fat loss", "nutrition", "diet", "calorie target"]
+      },
+      {
+        "chunk_id": "cdc_weight_2",
+        "text": "For sustainable weight management: choose foods high in fiber and nutrients but lower in calories (vegetables, fruits, whole grains, lean proteins); control portion sizes; limit energy-dense foods high in fat and added sugars; drink water instead of sugary beverages; and eat breakfast regularly to reduce overeating later.",
+        "keywords": ["weight loss", "weight management", "fiber", "portion size", "vegetables", "fruits", "whole grains", "protein", "breakfast", "nutrition"]
+      },
+      {
+        "chunk_id": "cdc_weight_3",
+        "text": "Protein's role in weight management: Higher protein intake increases satiety and may help preserve muscle mass during calorie restriction. Protein increases the thermic effect of food (energy used to digest food) more than carbohydrates or fat. Aim for 1.2–1.6g protein per kg body weight when losing weight to preserve lean muscle.",
+        "keywords": ["protein", "weight loss", "satiety", "muscle mass", "thermic effect", "calorie restriction", "lean muscle", "1.6g/kg"]
+      }
+    ]
+  },
+  {
+    "source_id": "usda_meal_planning",
+    "title": "Healthy Eating on a Budget — Meal Planning Tips",
+    "organization": "USDA MyPlate",
+    "url": "https://www.myplate.gov/eat-healthy/healthy-eating-budget/meal-planning",
+    "topic": "meal_planning",
+    "chunks": [
+      {
+        "chunk_id": "usda_meal_1",
+        "text": "Plan meals around what is in season or on sale, and use ingredients across multiple meals to minimize waste. Cook once, eat multiple times by making double batches of grains, proteins, or soups. Freeze excess portions in labeled containers to extend shelf life and reduce food waste.",
+        "keywords": ["meal planning", "food waste", "cooking", "freezer", "leftovers", "budget", "batch cooking"]
+      },
+      {
+        "chunk_id": "usda_meal_2",
+        "text": "To use expiring ingredients before they spoil: prioritize using perishables (dairy, meat, leafy greens) early in the week; freeze foods like bread, meat, and cooked beans before they spoil; use almost-expired fruit in smoothies, oatmeal, or baked goods; use wilting vegetables in soups, stir-fries, or omelets.",
+        "keywords": ["expiring", "food waste", "spinach", "vegetables", "fruit", "smoothies", "soup", "stir fry", "oatmeal", "bread", "freeze"]
+      },
+      {
+        "chunk_id": "usda_meal_3",
+        "text": "A balanced meal follows the MyPlate model: fill half the plate with vegetables and fruits; one-quarter with whole grains; one-quarter with lean protein; and include a dairy or calcium-rich side. This pattern provides a good balance of macronutrients and micronutrients for most adults.",
+        "keywords": ["balanced meal", "myplate", "vegetables", "fruits", "whole grains", "protein", "dairy", "macronutrients", "meal planning"]
+      }
+    ]
+  }
+]

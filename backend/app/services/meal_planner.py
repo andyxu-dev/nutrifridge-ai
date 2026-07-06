@@ -98,6 +98,7 @@ def _build_meal_from_template(
         "ingredients": ingredients,
         "estimated_macros": {k: round(v, 1) for k, v in total.items()},
         "reason": score_result["explanation"],
+        "recommendation_reasons": score_result.get("recommendation_reasons", []),
         "macro_gap_helped": _macro_gap_helped(total, remaining),
         "urgent_ingredients_used": urgent_used,
         "score": score_result["total"],

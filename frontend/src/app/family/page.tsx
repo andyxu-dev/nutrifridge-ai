@@ -8,9 +8,11 @@ import {
   updateFamilyMember,
   deleteFamilyMember,
   fetchFamilyMealPlan,
+  fetchFamilySchedule,
+  updateFamilySchedule,
 } from "@/lib/api";
 
-// ── Types ─────────────────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type FamilyMemberData = {
   id?: number;
@@ -32,26 +34,19 @@ type FamilyMemberData = {
   source?: string;
 };
 
-type FamilyPlan = {
-  selected_members: FamilyMemberData[];
-  individual_adjusted_targets: Record<string, { calories: number; protein_g: number; carbs_g: number; fat_g: number }>;
-  combined_household_targets: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
-  meals: FamilyMeal[];
-  conflict_notes: string[];
-  health_and_allergy_notes: string[];
-  recommendation_summary: string;
+type FamilyData = {
+  household: unknown;
+  primary_member: FamilyMemberData;
+  additional_members: FamilyMemberData[];
 };
 
-type FamilyMeal = {
+type PlanIngredient = {
+  inventory_item_id: number;
   name: string;
-  meal_type: string;
-  cuisine?: string;
-  cooking_time_minutes?: number;
-  estimated_macros: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
-  per_member_allocations?: PerMemberAllocation[];
-  instructions?: string[];
-  ingredients?: unknown[];
-  score?: number;
+  quantity_used: number;
+  unit: string;
+  reason: string;
+  expiration_risk: string;
 };
 
 type PerMemberAllocation = {
@@ -62,13 +57,44 @@ type PerMemberAllocation = {
   reason: string;
 };
 
-type FamilyData = {
-  household: unknown;
-  primary_member: FamilyMemberData;
-  additional_members: FamilyMemberData[];
+type FamilyMeal = {
+  name: string;
+  meal_type: string;
+  estimated_macros: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+  ingredients?: PlanIngredient[];
+  per_member_allocations?: PerMemberAllocation[];
 };
 
-// ── Constants ─────────────────────────────────────────────────────────────
+type FamilyPlan = {
+  selected_members: FamilyMemberData[];
+  individual_adjusted_targets: Record<string, { calories: number; protein_g: number; carbs_g: number; fat_g: number }>;
+  combined_household_targets: { calories: number; protein_g: number; carbs_g: number; fat_g: number };
+  meals: FamilyMeal[];
+  conflict_notes: string[];
+  health_and_allergy_notes: string[];
+  recommendation_summary: string;
+};
+
+type Schedule = Record<string, Record<string, string[]>>;
+
+// Eaten tracking: key is "{meal_type}-{ingredient_name}"
+type EatenState = {
+  [key: string]: { logId?: number; loading: boolean };
+};
+
+// ── Constants ──────────────────────────────────────────────────────────────────
+
+const SCHEDULE_TYPES = ["weekday", "weekend_holiday"] as const;
+const MEAL_TYPES = ["breakfast", "lunch", "dinner"] as const;
+const SCHEDULE_LABELS: Record<string, string> = {
+  weekday: "Weekdays (Mon–Fri)",
+  weekend_holiday: "Weekends & Holidays",
+};
+const MEAL_LABELS: Record<string, string> = {
+  breakfast: "Breakfast",
+  lunch: "Lunch",
+  dinner: "Dinner",
+};
 
 const HEALTH_CONDITIONS = [
   "fatty_liver", "diabetes", "prediabetes", "high_cholesterol",
@@ -80,7 +106,14 @@ const MEAL_TYPE_COLORS: Record<string, string> = {
   breakfast: "bg-amber-100 text-amber-700",
   lunch:     "bg-green-100 text-green-700",
   dinner:    "bg-blue-100 text-blue-700",
-  snack:     "bg-purple-100 text-purple-700",
+};
+
+const RISK_STYLES: Record<string, string> = {
+  expired: "bg-red-100 text-red-700 border border-red-200",
+  high:    "bg-orange-100 text-orange-700 border border-orange-200",
+  medium:  "bg-yellow-100 text-yellow-700 border border-yellow-200",
+  low:     "bg-green-100 text-green-700 border border-green-200",
+  unknown: "bg-gray-100 text-gray-600 border border-gray-200",
 };
 
 const defaultForm: Omit<FamilyMemberData, "id" | "member_key" | "source"> = {
@@ -100,7 +133,7 @@ const defaultForm: Omit<FamilyMemberData, "id" | "member_key" | "source"> = {
   is_active: true,
 };
 
-// ── Helper components ─────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function MacroPills({ macros }: { macros: { calories: number; protein_g: number; carbs_g: number; fat_g: number } }) {
   return (
@@ -113,16 +146,40 @@ function MacroPills({ macros }: { macros: { calories: number; protein_g: number;
   );
 }
 
-// ── Page ──────────────────────────────────────────────────────────────────
+function todayScheduleType(): "weekday" | "weekend_holiday" {
+  const day = new Date().getDay(); // 0=Sun, 6=Sat
+  return day === 0 || day === 6 ? "weekend_holiday" : "weekday";
+}
+
+function collectTodayMembers(schedule: Schedule): string[] {
+  const st = todayScheduleType();
+  const keys = new Set<string>();
+  for (const mkeys of Object.values(schedule[st] ?? {})) {
+    mkeys.forEach((k) => keys.add(k));
+  }
+  return Array.from(keys);
+}
+
+// ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function FamilyPage() {
   const [familyData, setFamilyData] = useState<FamilyData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
-  const [planLoading, setPlanLoading] = useState(false);
-  const [plan, setPlan] = useState<FamilyPlan | null>(null);
-  const [planError, setPlanError] = useState<string | null>(null);
 
+  // Schedule state
+  const [schedule, setSchedule] = useState<Schedule>({});
+  const [scheduleTab, setScheduleTab] = useState<"weekday" | "weekend_holiday">("weekday");
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleSaved, setScheduleSaved] = useState(false);
+
+  // Household Food Plan state
+  const [plan, setPlan] = useState<FamilyPlan | null>(null);
+  const [planLoading, setPlanLoading] = useState(false);
+  const [planError, setPlanError] = useState<string | null>(null);
+  const [eatenState, setEatenState] = useState<EatenState>({});
+  const [expandedAlloc, setExpandedAlloc] = useState<string | null>(null);
+
+  // Member CRUD state
   const [showForm, setShowForm] = useState(false);
   const [editingMember, setEditingMember] = useState<FamilyMemberData | null>(null);
   const [form, setForm] = useState(defaultForm);
@@ -131,51 +188,125 @@ export default function FamilyPage() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  const [expandedMeal, setExpandedMeal] = useState<string | null>(null);
-
   const formRef = useRef<HTMLDivElement>(null);
-
-  // Load family on mount; restore selections from localStorage
-  useEffect(() => {
-    const stored = localStorage.getItem("familySelections");
-    if (stored) {
-      try { setSelectedKeys(JSON.parse(stored)); } catch { /* ignore */ }
-    }
-    fetchFamily().then((data) => {
-      if (data) setFamilyData(data as FamilyData);
-      setLoading(false);
-    });
-  }, []);
-
-  // Persist selections
-  useEffect(() => {
-    localStorage.setItem("familySelections", JSON.stringify(selectedKeys));
-  }, [selectedKeys]);
 
   const allMembers: FamilyMemberData[] = familyData
     ? [familyData.primary_member, ...familyData.additional_members]
     : [];
 
-  const toggleKey = (key: string) => {
-    setSelectedKeys((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
-  };
+  // ── Load data ──────────────────────────────────────────────────────────────
 
-  const handleGeneratePlan = async () => {
-    if (selectedKeys.length === 0) return;
+  useEffect(() => {
+    Promise.all([fetchFamily(), fetchFamilySchedule()]).then(([fd, sched]) => {
+      if (fd) setFamilyData(fd as FamilyData);
+      if (sched) setSchedule(sched as Schedule);
+      setLoading(false);
+    });
+  }, []);
+
+  // Auto-generate food plan when schedule loads and has members for today
+  useEffect(() => {
+    if (loading) return;
+    const todayKeys = collectTodayMembers(schedule);
+    if (todayKeys.length === 0) return;
+    generatePlan(todayKeys);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, schedule]);
+
+  // ── Schedule helpers ───────────────────────────────────────────────────────
+
+  function toggleScheduleMember(st: string, mt: string, key: string) {
+    setSchedule((prev) => {
+      const current = (prev[st]?.[mt] ?? []) as string[];
+      const next = current.includes(key)
+        ? current.filter((k) => k !== key)
+        : [...current, key];
+      return { ...prev, [st]: { ...(prev[st] ?? {}), [mt]: next } };
+    });
+    setScheduleSaved(false);
+  }
+
+  async function saveSchedule() {
+    setScheduleSaving(true);
+    try {
+      await updateFamilySchedule({ schedule });
+      setScheduleSaved(true);
+      // Re-generate plan for today
+      const todayKeys = collectTodayMembers(schedule);
+      if (todayKeys.length > 0) generatePlan(todayKeys);
+    } catch { /* ignore */ } finally {
+      setScheduleSaving(false);
+    }
+  }
+
+  // ── Food plan ──────────────────────────────────────────────────────────────
+
+  async function generatePlan(memberKeys: string[]) {
+    if (memberKeys.length === 0) return;
     setPlanLoading(true);
     setPlanError(null);
     setPlan(null);
+    setEatenState({});
     try {
-      const data = await fetchFamilyMealPlan(selectedKeys);
+      const data = await fetchFamilyMealPlan(memberKeys);
       setPlan(data as FamilyPlan);
     } catch (err) {
       setPlanError(String(err));
     } finally {
       setPlanLoading(false);
     }
-  };
+  }
+
+  async function handleEaten(meal: FamilyMeal, ing: PlanIngredient) {
+    const key = `${meal.meal_type}-${ing.inventory_item_id}`;
+    if (eatenState[key]) return; // already eaten
+    setEatenState((prev) => ({ ...prev, [key]: { loading: true } }));
+    try {
+      const { logMeal } = await import("@/lib/api");
+      const result = await logMeal({
+        meal_type: meal.meal_type,
+        meal_name: ing.name,
+        calories: 0,
+        protein_g: 0,
+        carbs_g: 0,
+        fat_g: 0,
+        ingredients_used: [{
+          inventory_item_id: ing.inventory_item_id,
+          name: ing.name,
+          quantity_used: ing.quantity_used,
+          unit: ing.unit,
+        }],
+      });
+      setEatenState((prev) => ({ ...prev, [key]: { logId: result?.id, loading: false } }));
+    } catch {
+      setEatenState((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
+  }
+
+  async function handleUndoEaten(key: string) {
+    const entry = eatenState[key];
+    if (!entry?.logId) {
+      setEatenState((prev) => { const n = { ...prev }; delete n[key]; return n; });
+      return;
+    }
+    try {
+      const { deleteMealLog } = await import("@/lib/api");
+      await deleteMealLog(entry.logId);
+    } catch { /* ignore */ } finally {
+      setEatenState((prev) => { const n = { ...prev }; delete n[key]; return n; });
+    }
+  }
+
+  // ── Member CRUD ────────────────────────────────────────────────────────────
+
+  const refreshFamily = useCallback(async () => {
+    const data = await fetchFamily();
+    if (data) setFamilyData(data as FamilyData);
+  }, []);
 
   const openAddForm = () => {
     setEditingMember(null);
@@ -242,8 +373,7 @@ export default function FamilyPage() {
       }
       setShowForm(false);
       setEditingMember(null);
-      const data = await fetchFamily();
-      if (data) setFamilyData(data as FamilyData);
+      await refreshFamily();
     } catch (err) {
       setFormError(String(err));
     } finally {
@@ -252,286 +382,308 @@ export default function FamilyPage() {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm("Delete this family member?")) return;
+    if (!confirm("Delete this family member? They will also be removed from the meal schedule.")) return;
     try {
       await deleteFamilyMember(id);
-      const data = await fetchFamily();
-      if (data) setFamilyData(data as FamilyData);
+      await refreshFamily();
+      // Refresh schedule (backend already cleaned it)
+      const sched = await fetchFamilySchedule();
+      if (sched) setSchedule(sched as Schedule);
     } catch { /* ignore */ }
   };
 
-  const refreshFamily = useCallback(async () => {
-    const data = await fetchFamily();
-    if (data) setFamilyData(data as FamilyData);
-  }, []);
+  // ── Loading ────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
         <div className="h-16 bg-gray-200 rounded-2xl" />
-        <div className="h-48 bg-gray-200 rounded-2xl" />
         <div className="h-64 bg-gray-200 rounded-2xl" />
+        <div className="h-48 bg-gray-200 rounded-2xl" />
       </div>
     );
   }
 
+  const todayKeys = collectTodayMembers(schedule);
+  const todayType = todayScheduleType();
+
   return (
     <div className="max-w-4xl space-y-8">
-      {/* ── Header ────────────────────────────────────────────────────── */}
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Family Planning</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Manage household members and generate family-aware meal plans.
+          Manage your household meal schedule and see today&apos;s food plan.
         </p>
       </div>
 
-      {/* ── Who is Eating Today? ──────────────────────────────────────── */}
+      {/* ── Meal Schedule Editor ───────────────────────────────────────────── */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-800">Who is Eating Today?</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Select members to include in the family meal plan</p>
+          <h2 className="font-semibold text-gray-800">Meal Schedule</h2>
+          <p className="text-xs text-gray-400 mt-0.5">
+            Set who eats at home for weekdays and weekends. Used to auto-generate the grocery list.
+          </p>
         </div>
 
         {allMembers.length === 0 ? (
           <div className="px-6 py-8 text-center text-gray-400 text-sm">
-            No family members found. <Link href="/profile" className="text-green-600 underline">Set up your profile</Link> first, then add family members below.
+            No members found. <Link href="/profile" className="text-green-600 underline">Set up your profile</Link> first.
           </div>
         ) : (
-          <div className="px-6 py-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            {allMembers.map((member) => {
-              const selected = selectedKeys.includes(member.member_key);
-              return (
+          <>
+            {/* Tabs */}
+            <div className="flex border-b border-gray-100">
+              {SCHEDULE_TYPES.map((st) => (
                 <button
-                  key={member.member_key}
-                  type="button"
-                  onClick={() => toggleKey(member.member_key)}
-                  className={`text-left rounded-xl border p-3.5 transition-all ${
-                    selected
-                      ? "border-green-400 bg-green-50 ring-1 ring-green-300"
-                      : "border-gray-200 bg-gray-50 hover:border-gray-300"
+                  key={st}
+                  onClick={() => setScheduleTab(st)}
+                  className={`px-6 py-3 text-sm font-semibold transition-colors border-b-2 -mb-px ${
+                    scheduleTab === st
+                      ? "border-green-500 text-green-700"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
                   }`}
                 >
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <span className={`w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0 ${
-                      selected ? "bg-green-500 border-green-500 text-white" : "border-gray-300 bg-white"
-                    }`}>
-                      {selected ? "✓" : ""}
-                    </span>
-                    <span className="font-semibold text-gray-900 text-sm">{member.name}</span>
-                    {member.member_key === "primary" && (
-                      <span className="text-xs bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">You</span>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap gap-1 ml-6">
-                    {member.goal && (
-                      <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full capitalize">
-                        {member.goal.replace(/_/g, " ")}
-                      </span>
-                    )}
-                    {member.diet_style && member.diet_style !== "no_preference" && (
-                      <span className="text-xs bg-blue-50 text-blue-500 px-2 py-0.5 rounded-full capitalize">
-                        {member.diet_style.replace(/_/g, " ")}
-                      </span>
-                    )}
-                  </div>
+                  {SCHEDULE_LABELS[st]}
+                  {st === todayType && (
+                    <span className="ml-2 text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full">Today</span>
+                  )}
                 </button>
+              ))}
+            </div>
+
+            {/* Meal slots */}
+            <div className="p-5 space-y-4">
+              {MEAL_TYPES.map((mt) => {
+                const selected: string[] = schedule[scheduleTab]?.[mt] ?? [];
+                return (
+                  <div key={mt}>
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                      {MEAL_LABELS[mt]}
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                      {allMembers.map((m) => {
+                        const sel = selected.includes(m.member_key);
+                        return (
+                          <button
+                            key={m.member_key}
+                            type="button"
+                            onClick={() => toggleScheduleMember(scheduleTab, mt, m.member_key)}
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium border transition-colors ${
+                              sel
+                                ? "bg-green-50 border-green-300 text-green-800"
+                                : "bg-gray-50 border-gray-200 text-gray-600 hover:border-gray-300"
+                            }`}
+                          >
+                            <span className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
+                              sel ? "bg-green-500 border-green-500 text-white" : "border-gray-300 bg-white"
+                            }`}>
+                              {sel ? "✓" : ""}
+                            </span>
+                            {m.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="px-5 pb-5 flex items-center gap-3">
+              <button
+                onClick={saveSchedule}
+                disabled={scheduleSaving}
+                className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors shadow-sm"
+              >
+                {scheduleSaving ? "Saving…" : "Save Schedule"}
+              </button>
+              {scheduleSaved && (
+                <span className="text-xs text-green-600 font-medium">✓ Saved</span>
+              )}
+              <Link href="/grocery-list" className="text-xs text-gray-400 hover:text-gray-600 font-medium">
+                View grocery list →
+              </Link>
+            </div>
+          </>
+        )}
+      </section>
+
+      {/* ── Today's Household Food Plan ────────────────────────────────────── */}
+      <section>
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-800">
+              Today&apos;s Household Food Plan
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {todayType === "weekday" ? "Weekday schedule" : "Weekend / holiday schedule"}
+              {todayKeys.length > 0
+                ? ` · ${todayKeys.length} member${todayKeys.length !== 1 ? "s" : ""} eating today`
+                : " · No members scheduled for today"}
+            </p>
+          </div>
+          {todayKeys.length > 0 && (
+            <button
+              onClick={() => generatePlan(todayKeys)}
+              disabled={planLoading}
+              className="text-xs text-green-600 hover:text-green-800 font-semibold disabled:text-green-300"
+            >
+              {planLoading ? "Generating…" : "Regenerate →"}
+            </button>
+          )}
+        </div>
+
+        {todayKeys.length === 0 && (
+          <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-8 text-center">
+            <p className="text-gray-500 text-sm">No members scheduled to eat at home today.</p>
+            <p className="text-xs text-gray-400 mt-1">Update the meal schedule above to add members.</p>
+          </div>
+        )}
+
+        {planError && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-sm text-red-700">
+            {planError}
+          </div>
+        )}
+
+        {planLoading && (
+          <div className="space-y-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-24 bg-gray-100 rounded-2xl animate-pulse" />
+            ))}
+          </div>
+        )}
+
+        {!planLoading && plan && plan.meals.length > 0 && (
+          <div className="space-y-6">
+            {/* Conflict notes */}
+            {plan.conflict_notes.length > 0 && (
+              <div className="space-y-2">
+                {plan.conflict_notes.map((note, i) => (
+                  <div key={i} className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex gap-2 text-sm text-orange-800">
+                    <span className="shrink-0 font-bold">⚠</span>
+                    <span>{note}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Group meals by type */}
+            {MEAL_TYPES.filter((mt) => plan.meals.some((m) => m.meal_type === mt)).map((mt) => {
+              const mealsForSlot = plan.meals.filter((m) => m.meal_type === mt);
+              return (
+                <div key={mt}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${MEAL_TYPE_COLORS[mt] ?? "bg-gray-100 text-gray-600"}`}>
+                      {MEAL_LABELS[mt]}
+                    </span>
+                    <span className="text-xs text-gray-400">
+                      {(schedule[todayType]?.[mt] ?? []).length} member{(schedule[todayType]?.[mt] ?? []).length !== 1 ? "s" : ""} eating
+                    </span>
+                  </div>
+
+                  {/* Food item cards (ingredients from the meal) */}
+                  {mealsForSlot.flatMap((meal) =>
+                    (meal.ingredients ?? []).map((ing) => {
+                      const cardKey = `${meal.meal_type}-${ing.inventory_item_id}`;
+                      const eaten = cardKey in eatenState;
+                      const eatingNow = eatenState[cardKey]?.loading;
+                      const memberAllocs = meal.per_member_allocations ?? [];
+
+                      return (
+                        <div
+                          key={cardKey}
+                          className={`bg-white rounded-2xl shadow-sm border p-4 mb-3 transition-all ${
+                            eaten ? "border-green-200 opacity-75" : "border-gray-100"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="font-semibold text-gray-900 text-sm">{ing.name}</span>
+                                <span className="text-xs text-gray-500">
+                                  {ing.quantity_used} {ing.unit}
+                                </span>
+                                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${RISK_STYLES[ing.expiration_risk] ?? RISK_STYLES.unknown}`}>
+                                  {ing.expiration_risk}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-400 italic mb-2">{ing.reason}</p>
+
+                              {/* Per-member portions */}
+                              {memberAllocs.length > 0 && (
+                                <div>
+                                  <button
+                                    type="button"
+                                    onClick={() => setExpandedAlloc(expandedAlloc === cardKey ? null : cardKey)}
+                                    className="text-xs text-green-600 hover:text-green-800 font-semibold mb-1"
+                                  >
+                                    {expandedAlloc === cardKey ? "▲ Hide" : "▼ Per-member"} portions
+                                  </button>
+                                  {expandedAlloc === cardKey && (
+                                    <div className="space-y-1.5 mt-1">
+                                      {memberAllocs.map((a) => (
+                                        <div key={a.member_key} className="bg-gray-50 rounded-lg px-3 py-2 text-xs">
+                                          <span className="font-semibold text-gray-800">{a.member_name}:</span>
+                                          <span className="text-gray-500 ml-1">{a.portion_guidance}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Eaten button */}
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <button
+                                onClick={() => handleEaten(meal, ing)}
+                                disabled={eaten || eatingNow}
+                                className={`text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                                  eaten
+                                    ? "bg-green-100 text-green-600 cursor-default"
+                                    : eatingNow
+                                    ? "bg-gray-100 text-gray-400 cursor-wait"
+                                    : "bg-green-600 hover:bg-green-700 text-white"
+                                }`}
+                              >
+                                {eaten ? "✓ Eaten" : eatingNow ? "…" : "Eaten"}
+                              </button>
+                              {eaten && (
+                                <button
+                                  onClick={() => handleUndoEaten(cardKey)}
+                                  className="text-xs text-gray-400 hover:text-red-500 font-medium transition-colors"
+                                >
+                                  Undo
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               );
             })}
           </div>
         )}
 
-        <div className="px-6 py-4 border-t border-gray-100 flex items-center gap-3">
-          <button
-            onClick={handleGeneratePlan}
-            disabled={selectedKeys.length === 0 || planLoading}
-            className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors shadow-sm"
-          >
-            {planLoading ? "Generating…" : "Generate Family Meal Plan"}
-          </button>
-          {selectedKeys.length > 0 && (
-            <span className="text-xs text-gray-400">{selectedKeys.length} member{selectedKeys.length !== 1 ? "s" : ""} selected</span>
-          )}
-          {selectedKeys.length === 0 && (
-            <span className="text-xs text-gray-400">Select at least one member</span>
-          )}
-        </div>
+        {!planLoading && plan && plan.meals.length === 0 && (
+          <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
+            <span className="text-2xl block mb-2">🎉</span>
+            <p className="font-semibold text-green-700">Nutrition targets met for today!</p>
+          </div>
+        )}
       </section>
 
-      {/* ── Plan Error ───────────────────────────────────────────────── */}
-      {planError && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-sm text-red-700">
-          {planError}
-        </div>
-      )}
-
-      {/* ── Family Meal Plan Results ──────────────────────────────────── */}
-      {plan && (
-        <section className="space-y-5">
-          <h2 className="text-base font-semibold text-gray-800">Family Meal Plan</h2>
-
-          {/* Summary */}
-          {plan.recommendation_summary && (
-            <p className="text-sm text-gray-600 italic bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
-              {plan.recommendation_summary}
-            </p>
-          )}
-
-          {/* Conflict notes */}
-          {plan.conflict_notes.length > 0 && (
-            <div className="space-y-2">
-              {plan.conflict_notes.map((note, i) => (
-                <div key={i} className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-start gap-2 text-sm text-orange-800">
-                  <span className="shrink-0 font-bold">⚠</span>
-                  <span>{note}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Health/allergy notes */}
-          {plan.health_and_allergy_notes.length > 0 && (
-            <div className="space-y-2">
-              {plan.health_and_allergy_notes.map((note, i) => (
-                <div key={i} className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-3 flex items-start gap-2 text-sm text-blue-800">
-                  <span className="shrink-0">ℹ</span>
-                  <span>{note}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Individual targets */}
-          {Object.keys(plan.individual_adjusted_targets).length > 0 && (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h3 className="font-semibold text-gray-700 text-sm">Individual Adjusted Targets</h3>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-100 text-xs font-semibold uppercase tracking-wide text-gray-400">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Member</th>
-                      <th className="px-4 py-3 text-center">Calories</th>
-                      <th className="px-4 py-3 text-center">Protein</th>
-                      <th className="px-4 py-3 text-center">Carbs</th>
-                      <th className="px-4 py-3 text-center">Fat</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {plan.selected_members.map((m) => {
-                      const t = plan.individual_adjusted_targets[m.member_key];
-                      return t ? (
-                        <tr key={m.member_key} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-medium text-gray-900">{m.name}</td>
-                          <td className="px-4 py-3 text-center text-gray-600">{t.calories} kcal</td>
-                          <td className="px-4 py-3 text-center text-blue-600">{t.protein_g}g</td>
-                          <td className="px-4 py-3 text-center text-yellow-600">{t.carbs_g}g</td>
-                          <td className="px-4 py-3 text-center text-red-500">{t.fat_g}g</td>
-                        </tr>
-                      ) : null;
-                    })}
-                    {/* Combined household row */}
-                    <tr className="bg-green-50 font-semibold">
-                      <td className="px-4 py-3 text-green-800">Combined Household</td>
-                      <td className="px-4 py-3 text-center text-green-700">{plan.combined_household_targets.calories} kcal</td>
-                      <td className="px-4 py-3 text-center text-green-700">{plan.combined_household_targets.protein_g}g</td>
-                      <td className="px-4 py-3 text-center text-green-700">{plan.combined_household_targets.carbs_g}g</td>
-                      <td className="px-4 py-3 text-center text-green-700">{plan.combined_household_targets.fat_g}g</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {/* Meals */}
-          {plan.meals.length > 0 && (
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-gray-600 uppercase tracking-wide">Recommended Meals</h3>
-              {plan.meals.map((meal, idx) => {
-                const mealKey = `${meal.meal_type}-${idx}`;
-                const expanded = expandedMeal === mealKey;
-                const mealTypeColor = MEAL_TYPE_COLORS[meal.meal_type] ?? "bg-gray-100 text-gray-600";
-                return (
-                  <div key={mealKey} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-                    {/* Top row */}
-                    <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${mealTypeColor}`}>
-                          {meal.meal_type}
-                        </span>
-                        {meal.cuisine && (
-                          <span className="text-xs text-gray-400">{meal.cuisine}</span>
-                        )}
-                        {meal.cooking_time_minutes && (
-                          <span className="text-xs text-gray-400">· {meal.cooking_time_minutes} min</span>
-                        )}
-                      </div>
-                      {meal.score != null && (
-                        <span className="text-xs font-medium text-gray-400">Score: {meal.score}/100</span>
-                      )}
-                    </div>
-
-                    <h3 className="text-base font-semibold text-gray-900 mb-3">{meal.name}</h3>
-
-                    {/* Combined macros */}
-                    <div className="mb-4">
-                      <p className="text-xs text-gray-400 mb-1.5">Combined household macros</p>
-                      <MacroPills macros={meal.estimated_macros} />
-                    </div>
-
-                    {/* Per-member allocations */}
-                    {meal.per_member_allocations && meal.per_member_allocations.length > 0 && (
-                      <div className="space-y-2 mb-4">
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Per-Member Portions</p>
-                        {meal.per_member_allocations.map((alloc) => (
-                          <div key={alloc.member_key} className="bg-gray-50 rounded-xl p-3 border border-gray-100">
-                            <div className="flex items-start justify-between gap-2 mb-1.5">
-                              <span className="font-medium text-sm text-gray-800">{alloc.member_name}</span>
-                              <span className="text-xs text-gray-500 text-right">{alloc.portion_guidance}</span>
-                            </div>
-                            <MacroPills macros={alloc.estimated_macros} />
-                            {alloc.reason && (
-                              <p className="text-xs text-gray-400 mt-1.5 italic">{alloc.reason}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Instructions toggle */}
-                    {meal.instructions && meal.instructions.length > 0 && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setExpandedMeal(expanded ? null : mealKey)}
-                          className="text-xs text-green-600 hover:text-green-800 font-semibold flex items-center gap-1 mb-2 transition-colors"
-                        >
-                          {expanded ? "▲ Hide" : "▼ Show"} cooking instructions
-                        </button>
-                        {expanded && (
-                          <ol className="space-y-1.5 pl-4 list-decimal marker:text-green-500">
-                            {meal.instructions.map((step, i) => (
-                              <li key={i} className="text-xs text-gray-600 leading-relaxed pl-1">{step}</li>
-                            ))}
-                          </ol>
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Family Members ────────────────────────────────────────────── */}
+      {/* ── Family Members ─────────────────────────────────────────────────── */}
       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-gray-800">Family Members</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Additional household members (your own profile is managed in Profile settings)</p>
+            <p className="text-xs text-gray-400 mt-0.5">Your profile is managed in Profile settings</p>
           </div>
           <button
             onClick={openAddForm}
@@ -545,7 +697,7 @@ export default function FamilyPage() {
           <div className="px-6 py-10 text-center">
             <span className="text-4xl block mb-3">👨‍👩‍👧</span>
             <p className="font-medium text-gray-600 mb-1">No additional members yet</p>
-            <p className="text-sm text-gray-400">Add family members to generate household meal plans.</p>
+            <p className="text-sm text-gray-400">Add family members to include in household meal planning.</p>
           </div>
         ) : (
           <div className="divide-y divide-gray-100">
@@ -585,9 +737,7 @@ export default function FamilyPage() {
                     </div>
                   )}
                   {member.allergies.length > 0 && (
-                    <p className="text-xs text-orange-600 mt-1">
-                      Allergies: {member.allergies.join(", ")}
-                    </p>
+                    <p className="text-xs text-orange-600 mt-1">Allergies: {member.allergies.join(", ")}</p>
                   )}
                 </div>
                 <div className="flex gap-2 shrink-0">
@@ -612,7 +762,7 @@ export default function FamilyPage() {
         )}
       </section>
 
-      {/* ── Add / Edit Member Form ────────────────────────────────────── */}
+      {/* ── Add / Edit Member Form ──────────────────────────────────────────── */}
       {showForm && (
         <div ref={formRef}>
           <form
@@ -632,7 +782,6 @@ export default function FamilyPage() {
               </button>
             </div>
 
-            {/* Basic info */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">
@@ -694,11 +843,8 @@ export default function FamilyPage() {
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                 >
                   {[
-                    ["sedentary", "Sedentary"],
-                    ["light", "Light"],
-                    ["moderate", "Moderate"],
-                    ["active", "Active"],
-                    ["very_active", "Very Active"],
+                    ["sedentary", "Sedentary"], ["light", "Light"], ["moderate", "Moderate"],
+                    ["active", "Active"], ["very_active", "Very Active"],
                   ].map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
                   ))}
@@ -713,11 +859,8 @@ export default function FamilyPage() {
                   className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                 >
                   {[
-                    ["high_protein", "High Protein"],
-                    ["balanced", "Balanced"],
-                    ["low_carb", "Low Carb"],
-                    ["low_fat", "Low Fat"],
-                    ["no_preference", "No Preference"],
+                    ["high_protein", "High Protein"], ["balanced", "Balanced"],
+                    ["low_carb", "Low Carb"], ["low_fat", "Low Fat"], ["no_preference", "No Preference"],
                   ].map(([v, l]) => (
                     <option key={v} value={v}>{l}</option>
                   ))}
@@ -725,7 +868,6 @@ export default function FamilyPage() {
               </div>
             </div>
 
-            {/* Numbers */}
             <div className="grid grid-cols-3 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Age</label>
@@ -759,7 +901,6 @@ export default function FamilyPage() {
               </div>
             </div>
 
-            {/* Health conditions */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">Health Conditions</label>
               <div className="flex flex-wrap gap-2">
@@ -783,7 +924,6 @@ export default function FamilyPage() {
               </div>
             </div>
 
-            {/* Allergies + avoid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Allergies</label>
@@ -805,7 +945,6 @@ export default function FamilyPage() {
               </div>
             </div>
 
-            {/* Active toggle */}
             <div className="flex items-center gap-2">
               <input
                 id="is_active"

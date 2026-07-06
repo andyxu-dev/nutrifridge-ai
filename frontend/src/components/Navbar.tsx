@@ -9,6 +9,7 @@ const LINKS = [
   { href: "/inventory",   label: "Inventory" },
   { href: "/grocery-list", label: "Grocery List" },
   { href: "/family",      label: "Family" },
+  { href: "/assistant",   label: "AI Assistant" },
 ];
 
 export default function Navbar() {

@@ -43,3 +43,15 @@ npm-debug.log*
 # Java/Maven build artifacts
 backend-java/target/
 *.class
+
+# TypeScript build cache
+frontend/tsconfig.tsbuildinfo
+
+# Local RAG/vector-store runtime files
+backend/knowledge_base/chroma/
+backend/knowledge_base/chroma_db/
+backend/knowledge_base/vector_store/
+backend/knowledge_base/embeddings/
+
+# In case SQLite files use this extension
+*.sqlite

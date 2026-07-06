@@ -5,7 +5,7 @@ Members can be the primary User profile (key="primary") or additional
 FamilyMember records (key="member:{id}").
 """
 import json
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models.household import FamilyMember, Household
+from app.models.household import FamilyMember, Household, HouseholdMealSchedule
 from app.models.inventory import InventoryItem
 from app.models.user import User
 from app.schemas.household import (
@@ -364,6 +364,10 @@ class FamilyGroceryRequest(BaseModel):
     days_at_home: Optional[Dict[str, int]] = None
 
 
+class ScheduleUpdateRequest(BaseModel):
+    schedule: Dict[str, Dict[str, List[str]]]  # {schedule_type: {meal_type: [member_keys]}}
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @router.get("")
@@ -462,13 +466,81 @@ def update_family_member(
 
 @router.delete("/members/{member_id}")
 def delete_family_member(member_id: int, db: Session = Depends(get_db)):
-    """Delete a family member. The primary profile cannot be deleted here."""
+    """Delete a family member and remove them from all schedule slots."""
     member = db.query(FamilyMember).filter(FamilyMember.id == member_id).first()
     if not member:
         raise HTTPException(status_code=404, detail=f"Family member {member_id} not found")
+
+    member_key = f"member:{member_id}"
+    household = _get_or_create_household(db)
+    for slot in db.query(HouseholdMealSchedule).filter(
+        HouseholdMealSchedule.household_id == household.id
+    ).all():
+        keys = _parse_json_list(slot.selected_member_keys)
+        if member_key in keys:
+            keys.remove(member_key)
+            slot.selected_member_keys = json.dumps(keys)
+
     db.delete(member)
     db.commit()
     return {"message": f"Family member {member_id} deleted successfully"}
+
+
+_SCHEDULE_TYPES = ("weekday", "weekend_holiday")
+_MEAL_TYPES = ("breakfast", "lunch", "dinner")
+
+
+@router.get("/schedule")
+def get_schedule(db: Session = Depends(get_db)):
+    """Return the saved meal attendance schedule (weekday / weekend_holiday × breakfast / lunch / dinner)."""
+    household = _get_or_create_household(db)
+    slots = (
+        db.query(HouseholdMealSchedule)
+        .filter(HouseholdMealSchedule.household_id == household.id)
+        .all()
+    )
+    result: Dict[str, Dict[str, List[str]]] = {}
+    for st in _SCHEDULE_TYPES:
+        result[st] = {}
+        for mt in _MEAL_TYPES:
+            slot = next(
+                (s for s in slots if s.schedule_type == st and s.meal_type == mt), None
+            )
+            result[st][mt] = _parse_json_list(slot.selected_member_keys if slot else "[]")
+    return result
+
+
+@router.put("/schedule")
+def update_schedule(payload: ScheduleUpdateRequest, db: Session = Depends(get_db)):
+    """Upsert the meal attendance schedule."""
+    household = _get_or_create_household(db)
+    for st, meals in payload.schedule.items():
+        if st not in _SCHEDULE_TYPES:
+            continue
+        for mt, member_keys in meals.items():
+            if mt not in _MEAL_TYPES:
+                continue
+            existing = (
+                db.query(HouseholdMealSchedule)
+                .filter(
+                    HouseholdMealSchedule.household_id == household.id,
+                    HouseholdMealSchedule.schedule_type == st,
+                    HouseholdMealSchedule.meal_type == mt,
+                )
+                .first()
+            )
+            if existing:
+                existing.selected_member_keys = json.dumps(member_keys)
+                existing.updated_at = datetime.utcnow().isoformat()
+            else:
+                db.add(HouseholdMealSchedule(
+                    household_id=household.id,
+                    schedule_type=st,
+                    meal_type=mt,
+                    selected_member_keys=json.dumps(member_keys),
+                ))
+    db.commit()
+    return {"message": "Schedule updated successfully"}
 
 
 @router.post("/meal-plan/today")

@@ -91,6 +91,9 @@ def score_meal(
                     f"Excluded: contains {', '.join(excluded_items)} "
                     "(allergy or avoidance restriction)."
                 ),
+                "recommendation_reasons": [
+                    f"Excluded — contains allergen/avoided food: {', '.join(excluded_items)}"
+                ],
             }
 
     # ── 1. Urgency score ────────────────────────────────────────────────────
@@ -236,9 +239,74 @@ def score_meal(
         "; ".join(reasons) if reasons else "selected based on ingredient availability"
     )
 
+    # Build structured recommendation_reasons: concise tags (max 4)
+    structured_reasons: List[str] = []
+
+    # Urgency tag
+    if matched_items:
+        urgent_names = [
+            i.name for i in matched_items
+            if get_expiration_risk(i.best_before_date) in ("expired", "high")
+        ]
+        medium_names = [
+            i.name for i in matched_items
+            if get_expiration_risk(i.best_before_date) == "medium"
+        ]
+        if urgent_names:
+            structured_reasons.append(f"Uses {', '.join(urgent_names[:2])} expiring soon")
+        elif medium_names:
+            structured_reasons.append(f"Uses {', '.join(medium_names[:2])} within 5 days")
+
+    # Protein tag
+    protein_gap = remaining_macros.get("protein_g", 0)
+    meal_protein = estimated_macros.get("protein_g", 0)
+    if protein_gap > 10 and meal_protein > 10:
+        structured_reasons.append(
+            f"Adds {round(meal_protein)}g protein toward {round(protein_gap)}g daily gap"
+        )
+
+    # Preference/diet tag
+    cuisine_pref = getattr(user, "cuisine_preference", None)
+    diet_style = getattr(user, "diet_style", None)
+    if cuisine_pref and cuisine_pref not in ("mixed", "no_preference") and template.get("cuisine") == cuisine_pref:
+        structured_reasons.append(f"Matches your {cuisine_pref} cuisine preference")
+    elif diet_style and diet_style != "no_preference" and diet_style in template.get("tags", []):
+        structured_reasons.append(f"Fits your {diet_style.replace('_', ' ')} diet style")
+
+    # Health condition tag
+    conditions_raw = getattr(user, "health_conditions", None)
+    import json as _jj
+    conditions_list = []
+    if isinstance(conditions_raw, list):
+        conditions_list = conditions_raw
+    elif isinstance(conditions_raw, str):
+        try:
+            conditions_list = _jj.loads(conditions_raw)
+        except Exception:
+            pass
+    if conditions_list:
+        condition_labels = {
+            "fatty_liver": "fatty liver",
+            "diabetes": "diabetes",
+            "prediabetes": "prediabetes",
+            "high_cholesterol": "high cholesterol",
+            "hypertension": "hypertension",
+            "kidney_disease": "kidney disease",
+        }
+        active = [condition_labels[c] for c in conditions_list if c in condition_labels]
+        if active and breakdown["health_constraint_score"] >= 0:
+            structured_reasons.append(
+                f"Avoids high-risk ingredients for {', '.join(active[:2])}"
+            )
+
+    # Fallback if nothing else
+    if not structured_reasons:
+        structured_reasons.append("Selected based on available inventory")
+
     return {
         "total": total,
         "excluded": False,
         "breakdown": breakdown,
         "explanation": explanation.capitalize() + ".",
+        "recommendation_reasons": structured_reasons[:4],
     }

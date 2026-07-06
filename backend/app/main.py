@@ -12,9 +12,10 @@ import app.models.nutrition_log # noqa: F401
 import app.models.waste_log     # noqa: F401
 import app.models.household     # noqa: F401
 import app.models.location      # noqa: F401
+import app.models.assistant     # noqa: F401
 
 from app.routers import profile, inventory, nutrition, meal_plan, nutrition_log, foods
-from app.routers import grocery_list, waste_log, family, locations
+from app.routers import grocery_list, waste_log, family, locations, assistant
 
 Base.metadata.create_all(bind=engine)
 
@@ -119,6 +120,10 @@ def _seed_defaults(db: Session) -> None:
 
     db.commit()
 
+    # ── Auto-ingest knowledge base (skip if already ingested) ─────────────────
+    from app.routers.assistant import ingest_knowledge_base
+    ingest_knowledge_base(db, force=False)
+
 
 _migrate_db()
 
@@ -153,6 +158,7 @@ app.include_router(grocery_list.router)
 app.include_router(waste_log.router)
 app.include_router(family.router)
 app.include_router(locations.router)
+app.include_router(assistant.router)
 
 
 @app.get("/")

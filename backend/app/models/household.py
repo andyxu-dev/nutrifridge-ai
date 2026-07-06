@@ -57,3 +57,17 @@ class FamilyMember(Base):
                         onupdate=lambda: datetime.datetime.utcnow().isoformat())
 
     household = relationship("Household", back_populates="members")
+
+
+class HouseholdMealSchedule(Base):
+    """Persistent weekday / weekend-holiday attendance template per meal slot."""
+    __tablename__ = "household_meal_schedules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    household_id = Column(Integer, ForeignKey("households.id", ondelete="CASCADE"), nullable=False)
+    schedule_type = Column(String, nullable=False)           # "weekday" | "weekend_holiday"
+    meal_type = Column(String, nullable=False)               # "breakfast" | "lunch" | "dinner"
+    selected_member_keys = Column(Text, nullable=True, default="[]")  # JSON list of member keys
+    created_at = Column(String, default=lambda: datetime.datetime.utcnow().isoformat())
+    updated_at = Column(String, default=lambda: datetime.datetime.utcnow().isoformat(),
+                        onupdate=lambda: datetime.datetime.utcnow().isoformat())

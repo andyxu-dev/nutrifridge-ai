@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { fetchGroceryList, fetchFamily, fetchFamilyGroceryList } from "@/lib/api";
+import {
+  fetchGroceryList,
+  fetchFamily,
+  fetchFamilyGroceryList,
+  fetchFamilySchedule,
+} from "@/lib/api";
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type GroceryItem = {
   name: string;
@@ -29,23 +36,33 @@ type GroceryList = {
   };
 };
 
-type FamilyMemberSimple = {
-  id?: number;
-  member_key: string;
-  name: string;
-};
-
-type FamilyData = {
-  primary_member: FamilyMemberSimple;
-  additional_members: FamilyMemberSimple[];
+type HouseholdNutritionSummary = {
+  combined_weekly_targets: {
+    calories: number;
+    protein_g: number;
+    carbs_g: number;
+    fat_g: number;
+  };
+  individual_weekly_needs: Record<
+    string,
+    {
+      name: string;
+      days_at_home: number;
+      weekly_calories: number;
+      weekly_protein_g: number;
+      weekly_carbs_g: number;
+      weekly_fat_g: number;
+    }
+  >;
+  all_excluded_foods: string[];
 };
 
 type FamilyGroceryList = {
   recommended_to_buy: GroceryItem[];
   avoid_buying: { name: string; reason: string }[];
   use_first: { name: string; reason: string }[];
-  household_nutrition_summary: string;
-  member_specific_notes: Record<string, string>;
+  household_nutrition_summary: HouseholdNutritionSummary;
+  member_specific_notes: string[];
   conflict_notes: string[];
   inventory_summary?: {
     total_items: number;
@@ -55,6 +72,15 @@ type FamilyGroceryList = {
     categories_present: string[];
   };
 };
+
+type MemberSimple = {
+  member_key: string;
+  name: string;
+};
+
+type Schedule = Record<string, Record<string, string[]>>;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const PRIORITY_STYLES: Record<string, string> = {
   high:   "bg-red-100 text-red-700 border border-red-200",
@@ -73,21 +99,62 @@ const CATEGORY_EMOJI: Record<string, string> = {
   other:     "🍳",
 };
 
+function computeDaysAtHome(
+  schedule: Schedule,
+  holidayMode: boolean,
+): Record<string, number> {
+  const days: Record<string, number> = {};
+  const scheduleTypes = holidayMode
+    ? (["weekend_holiday"] as const)
+    : (["weekday", "weekend_holiday"] as const);
+  const multipliers = holidayMode
+    ? { weekend_holiday: 7 }
+    : { weekday: 5, weekend_holiday: 2 };
+
+  for (const st of scheduleTypes) {
+    const meals = schedule[st] ?? {};
+    const mult = multipliers[st as keyof typeof multipliers] ?? 0;
+    for (const keys of Object.values(meals)) {
+      for (const k of keys) {
+        days[k] = (days[k] ?? 0) + mult;
+      }
+    }
+  }
+  // cap at 7
+  for (const k of Object.keys(days)) {
+    days[k] = Math.min(days[k], 7);
+  }
+  return days;
+}
+
+function collectMemberKeys(schedule: Schedule): string[] {
+  const keys = new Set<string>();
+  for (const meals of Object.values(schedule)) {
+    for (const mkeys of Object.values(meals)) {
+      mkeys.forEach((k) => keys.add(k));
+    }
+  }
+  return Array.from(keys);
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────────
+
 export default function GroceryListPage() {
   const [list, setList] = useState<GroceryList | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Mode toggle: personal vs family
-  const [mode, setMode] = useState<"personal" | "family">("personal");
-
-  // Family state
-  const [familyData, setFamilyData] = useState<FamilyData | null>(null);
-  const [familySelections, setFamilySelections] = useState<string[]>([]);
-  const [daysAtHome, setDaysAtHome] = useState<Record<string, number>>({});
+  // Family + schedule state
+  const [allMembers, setAllMembers] = useState<MemberSimple[]>([]);
+  const [schedule, setSchedule] = useState<Schedule>({});
+  const [holidayMode, setHolidayMode] = useState(false);
   const [familyList, setFamilyList] = useState<FamilyGroceryList | null>(null);
   const [familyLoading, setFamilyLoading] = useState(false);
   const [familyError, setFamilyError] = useState<string | null>(null);
+
+  const hasFamilySchedule =
+    Object.keys(schedule).length > 0 &&
+    collectMemberKeys(schedule).length > 0;
 
   useEffect(() => {
     fetchGroceryList()
@@ -97,55 +164,35 @@ export default function GroceryListPage() {
       })
       .catch(() => setError("Backend not reachable."))
       .finally(() => setLoading(false));
-    // Load family data
-    fetchFamily().then((fd) => {
-      if (fd) {
-        setFamilyData(fd as FamilyData);
-        // Restore selections from localStorage
-        const stored = localStorage.getItem("familySelections");
-        if (stored) {
-          try {
-            const keys = JSON.parse(stored) as string[];
-            setFamilySelections(keys);
-            // init daysAtHome to 7 for each key
-            const d: Record<string, number> = {};
-            keys.forEach((k: string) => { d[k] = 7; });
-            setDaysAtHome(d);
-          } catch { /* ignore */ }
+
+    // Load family data + schedule
+    Promise.all([fetchFamily(), fetchFamilySchedule()]).then(
+      ([fd, sched]) => {
+        if (fd) {
+          const members: MemberSimple[] = [
+            fd.primary_member,
+            ...(fd.additional_members ?? []),
+          ];
+          setAllMembers(members);
         }
+        if (sched) setSchedule(sched as Schedule);
       }
-    });
+    );
   }, []);
 
-  const allFamilyMembers: FamilyMemberSimple[] = familyData
-    ? [familyData.primary_member, ...familyData.additional_members]
-    : [];
-
-  const toggleFamilyMember = (key: string) => {
-    setFamilySelections((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
-      localStorage.setItem("familySelections", JSON.stringify(next));
-      // init days at home
-      if (!prev.includes(key)) {
-        setDaysAtHome((d) => ({ ...d, [key]: d[key] ?? 7 }));
-      }
-      return next;
-    });
-  };
-
-  const handleGenerateFamilyList = async () => {
-    if (familySelections.length === 0) return;
+  // Auto-generate family grocery list when schedule / holidayMode changes
+  useEffect(() => {
+    if (!hasFamilySchedule) return;
+    const memberKeys = collectMemberKeys(schedule);
+    const daysAtHome = computeDaysAtHome(schedule, holidayMode);
     setFamilyLoading(true);
     setFamilyError(null);
-    try {
-      const data = await fetchFamilyGroceryList(familySelections, daysAtHome);
-      setFamilyList(data as FamilyGroceryList);
-    } catch (err) {
-      setFamilyError(String(err));
-    } finally {
-      setFamilyLoading(false);
-    }
-  };
+    fetchFamilyGroceryList(memberKeys, daysAtHome)
+      .then((data) => setFamilyList(data as FamilyGroceryList))
+      .catch((err) => setFamilyError(String(err)))
+      .finally(() => setFamilyLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [schedule, holidayMode, hasFamilySchedule]);
 
   if (loading) {
     return (
@@ -154,7 +201,6 @@ export default function GroceryListPage() {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => <div key={i} className="h-24 bg-gray-200 rounded-2xl" />)}
         </div>
-        <div className="h-16 bg-gray-200 rounded-2xl" />
         <div className="h-64 bg-gray-200 rounded-2xl" />
       </div>
     );
@@ -163,9 +209,7 @@ export default function GroceryListPage() {
   if (error || !list) {
     return (
       <div className="max-w-2xl space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Weekly Grocery List</h1>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Weekly Grocery List</h1>
         <div className="bg-red-50 border border-red-200 rounded-2xl p-6 text-red-700">
           <p className="font-semibold mb-1">{error ?? "Something went wrong."}</p>
           <p className="text-sm">
@@ -181,101 +225,115 @@ export default function GroceryListPage() {
 
   return (
     <div className="max-w-4xl space-y-6">
-      {/* Header */}
+      {/* ── Header ────────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Weekly Grocery List</h1>
           <p className="text-gray-500 text-sm mt-1">
-            Personalised recommendations based on your inventory, nutrition targets, and food preferences.
+            {hasFamilySchedule
+              ? "Household recommendations based on your attendance schedule."
+              : "Personalised recommendations based on your inventory, nutrition targets, and food preferences."}
           </p>
         </div>
-        {/* Mode toggle */}
-        <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-sm font-semibold shrink-0">
-          <button
-            onClick={() => setMode("personal")}
-            className={`px-4 py-2 rounded-md transition-colors ${mode === "personal" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}
-          >
-            Personal
-          </button>
-          <button
-            onClick={() => setMode("family")}
-            className={`px-4 py-2 rounded-md transition-colors ${mode === "family" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}
-          >
-            Family
-          </button>
-        </div>
+        {hasFamilySchedule && (
+          <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-sm font-semibold shrink-0">
+            <button
+              onClick={() => setHolidayMode(false)}
+              className={`px-4 py-2 rounded-md transition-colors ${!holidayMode ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}
+            >
+              Normal Week
+            </button>
+            <button
+              onClick={() => setHolidayMode(true)}
+              className={`px-4 py-2 rounded-md transition-colors ${holidayMode ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}
+            >
+              Holiday Week
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* ── Family Mode ────────────────────────────────────────────────── */}
-      {mode === "family" && (
+      {/* ── Household Grocery List (schedule-driven) ───────────────────── */}
+      {hasFamilySchedule && (
         <div className="space-y-5">
-          {/* Member selector */}
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
-            <h2 className="font-semibold text-gray-800 mb-3 text-sm">Select Household Members</h2>
-            {allFamilyMembers.length === 0 ? (
-              <p className="text-sm text-gray-400">
-                No family members found. <Link href="/family" className="text-green-600 underline">Add members in Family</Link> first.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                  {allFamilyMembers.map((member) => {
-                    const sel = familySelections.includes(member.member_key);
-                    return (
-                      <div key={member.member_key} className={`rounded-xl border p-3 transition-all ${sel ? "border-green-400 bg-green-50" : "border-gray-200 bg-gray-50"}`}>
-                        <button
-                          type="button"
-                          onClick={() => toggleFamilyMember(member.member_key)}
-                          className="flex items-center gap-2 w-full text-left mb-2"
-                        >
-                          <span className={`w-4 h-4 rounded border flex items-center justify-center text-xs shrink-0 ${sel ? "bg-green-500 border-green-500 text-white" : "border-gray-300 bg-white"}`}>
-                            {sel ? "✓" : ""}
-                          </span>
-                          <span className="font-medium text-sm text-gray-900">{member.name}</span>
-                          {member.member_key === "primary" && (
-                            <span className="text-xs text-gray-400">(you)</span>
-                          )}
-                        </button>
-                        {sel && (
-                          <div className="ml-6">
-                            <label className="text-xs text-gray-500 block mb-1">Days at home this week</label>
-                            <input
-                              type="number" min="0" max="7"
-                              value={daysAtHome[member.member_key] ?? 7}
-                              onChange={(e) => setDaysAtHome((d) => ({ ...d, [member.member_key]: parseInt(e.target.value) || 0 }))}
-                              className="w-20 border border-gray-200 rounded-lg px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-green-500"
-                            />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <button
-                  onClick={handleGenerateFamilyList}
-                  disabled={familySelections.length === 0 || familyLoading}
-                  className="bg-green-600 hover:bg-green-700 disabled:bg-green-300 text-white font-semibold px-5 py-2.5 rounded-xl text-sm transition-colors shadow-sm"
-                >
-                  {familyLoading ? "Generating…" : "Generate Family List"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {familyError && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-sm text-red-700">{familyError}</div>
+          {familyLoading && (
+            <div className="h-48 bg-gray-100 rounded-2xl animate-pulse" />
           )}
 
-          {familyList && (
-            <div className="space-y-5">
-              {/* Household summary */}
-              {familyList.household_nutrition_summary && (
-                <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 text-sm text-blue-800">
-                  <p className="font-semibold mb-1">Nutrition Summary</p>
-                  <p>{familyList.household_nutrition_summary}</p>
+          {familyError && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl px-5 py-4 text-sm text-red-700">
+              {familyError}
+            </div>
+          )}
+
+          {!familyLoading && familyList && (
+            <>
+              {/* Household nutrition summary */}
+              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-5 space-y-4">
+                <h2 className="font-semibold text-blue-900 text-sm">
+                  Household Weekly Nutrition{" "}
+                  <span className="font-normal text-blue-600">
+                    ({holidayMode ? "Holiday Week — all 7 days" : "Normal Week — weekday ×5 + weekend ×2"})
+                  </span>
+                </h2>
+
+                {/* Combined targets */}
+                <div className="grid grid-cols-4 gap-3">
+                  {[
+                    { label: "Calories", value: familyList.household_nutrition_summary.combined_weekly_targets.calories, unit: "kcal" },
+                    { label: "Protein",  value: familyList.household_nutrition_summary.combined_weekly_targets.protein_g, unit: "g" },
+                    { label: "Carbs",    value: familyList.household_nutrition_summary.combined_weekly_targets.carbs_g, unit: "g" },
+                    { label: "Fat",      value: familyList.household_nutrition_summary.combined_weekly_targets.fat_g, unit: "g" },
+                  ].map((m) => (
+                    <div key={m.label} className="bg-white rounded-xl p-3 text-center border border-blue-100">
+                      <div className="text-xs font-semibold text-blue-400 uppercase tracking-wide mb-1">{m.label}</div>
+                      <div className="font-bold text-blue-900">{m.value} {m.unit}</div>
+                    </div>
+                  ))}
                 </div>
-              )}
+
+                {/* Per-member breakdown */}
+                {Object.keys(familyList.household_nutrition_summary.individual_weekly_needs).length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-2">Per Member</p>
+                    <div className="space-y-2">
+                      {Object.entries(familyList.household_nutrition_summary.individual_weekly_needs).map(
+                        ([key, info]) => {
+                          const member = allMembers.find((m) => m.member_key === key);
+                          return (
+                            <div key={key} className="bg-white rounded-xl px-4 py-2.5 border border-blue-100 text-sm flex items-center justify-between flex-wrap gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="font-semibold text-gray-900">{member?.name ?? info.name}</span>
+                                <span className="text-xs text-gray-400">({info.days_at_home} days)</span>
+                              </div>
+                              <div className="flex gap-3 text-xs text-gray-500">
+                                <span className="font-medium text-gray-700">{info.weekly_calories} kcal</span>
+                                <span>{info.weekly_protein_g}g P</span>
+                                <span>{info.weekly_carbs_g}g C</span>
+                                <span>{info.weekly_fat_g}g F</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Excluded foods */}
+                {familyList.household_nutrition_summary.all_excluded_foods.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-1.5">Excluded from all meals</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {familyList.household_nutrition_summary.all_excluded_foods.map((food) => (
+                        <span key={food} className="text-xs bg-red-50 border border-red-200 text-red-700 px-2.5 py-1 rounded-full">
+                          {food}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
 
               {/* Conflict notes */}
               {familyList.conflict_notes.length > 0 && (
@@ -290,7 +348,7 @@ export default function GroceryListPage() {
               )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                {/* Recommended to buy */}
+                {/* Buy this week */}
                 <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                   <div className="px-5 py-4 border-b border-gray-100 flex items-center gap-2">
                     <span className="text-green-500 font-bold">✓</span>
@@ -327,7 +385,7 @@ export default function GroceryListPage() {
                     <span className="ml-auto text-xs text-gray-400">{(familyList.use_first ?? []).length} items</span>
                   </div>
                   {(familyList.use_first ?? []).length === 0 ? (
-                    <div className="p-6 text-center text-sm text-gray-400">Nothing urgent to use first.</div>
+                    <div className="p-6 text-center text-sm text-gray-400">Nothing urgent.</div>
                   ) : (
                     <div className="divide-y divide-gray-100">
                       {(familyList.use_first ?? []).map((item, i) => (
@@ -342,29 +400,36 @@ export default function GroceryListPage() {
               </div>
 
               {/* Member-specific notes */}
-              {familyList.member_specific_notes && Object.keys(familyList.member_specific_notes).length > 0 && (
+              {familyList.member_specific_notes.length > 0 && (
                 <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                   <h2 className="font-semibold text-gray-700 text-sm mb-3">Member-Specific Notes</h2>
                   <div className="space-y-2">
-                    {Object.entries(familyList.member_specific_notes).map(([key, note]) => {
-                      const member = allFamilyMembers.find((m) => m.member_key === key);
-                      return (
-                        <div key={key} className="bg-gray-50 rounded-xl px-4 py-3 text-sm">
-                          <p className="font-semibold text-gray-800 mb-0.5">{member?.name ?? key}</p>
-                          <p className="text-gray-600">{note}</p>
-                        </div>
-                      );
-                    })}
+                    {familyList.member_specific_notes.map((note, i) => (
+                      <p key={i} className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-600">
+                        {note}
+                      </p>
+                    ))}
                   </div>
                 </section>
               )}
-            </div>
+            </>
           )}
+
+          {/* Divider before personal section */}
+          <div className="border-t border-gray-200 pt-2">
+            <p className="text-xs text-gray-400 font-medium uppercase tracking-wide">Your personal snapshot</p>
+          </div>
         </div>
       )}
 
-      {/* ── Personal Mode ─────────────────────────────────────────────── */}
-      {mode === "personal" && <>
+      {/* ── No schedule yet ────────────────────────────────────────────── */}
+      {!hasFamilySchedule && allMembers.length > 1 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-2xl px-5 py-4 text-sm text-blue-700">
+          Set up a <Link href="/family" className="underline font-semibold">meal attendance schedule</Link> to get household-wide grocery recommendations.
+        </div>
+      )}
+
+      {/* ── Personal grocery list ──────────────────────────────────────── */}
 
       {/* Inventory snapshot */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -489,12 +554,13 @@ export default function GroceryListPage() {
         <Link href="/inventory" className="text-green-600 hover:text-green-800 font-semibold underline">
           Manage Inventory →
         </Link>
+        <Link href="/family" className="text-green-600 hover:text-green-800 font-semibold underline">
+          Edit Meal Schedule →
+        </Link>
         <Link href="/dashboard" className="text-gray-400 hover:text-gray-600 font-medium underline">
           ← Back to Dashboard
         </Link>
       </div>
-
-      </>}
     </div>
   );
 }

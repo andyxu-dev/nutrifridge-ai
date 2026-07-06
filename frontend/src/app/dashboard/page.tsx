@@ -14,7 +14,7 @@ import {
   logManualMeal,
   fetchNutritionAnalysis,
   fetchFamily,
-  fetchFamilyMealPlan,
+  fetchFamilySchedule,
 } from "@/lib/api";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -75,6 +75,7 @@ type PlanMeal = {
   ingredients: PlanIngredient[];
   estimated_macros: Macros;
   reason: string;
+  recommendation_reasons: string[];
   macro_gap_helped: string[];
   urgent_ingredients_used: string[];
   score: number;
@@ -152,22 +153,7 @@ type FamilyDataBasic = {
   additional_members: FamilyMemberBasic[];
 };
 
-type FamilyMeal = {
-  name: string;
-  meal_type: string;
-  estimated_macros: Macros;
-  per_member_allocations?: {
-    member_name: string;
-    portion_guidance: string;
-    estimated_macros: Macros;
-  }[];
-};
-
-type FamilyPlanData = {
-  meals: FamilyMeal[];
-  recommendation_summary: string;
-  conflict_notes: string[];
-};
+type Schedule = Record<string, Record<string, string[]>>;
 
 // ── Style helpers ─────────────────────────────────────────────────────────
 
@@ -259,12 +245,11 @@ export default function DashboardPage() {
   const [quickSaving, setQuickSaving] = useState(false);
   const [quickMsg, setQuickMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  // Family state
+  // Family + schedule state
   const [familyData, setFamilyData] = useState<FamilyDataBasic | null>(null);
-  const [familySelections, setFamilySelections] = useState<string[]>([]);
-  const [planMode, setPlanMode] = useState<"personal" | "family">("personal");
-  const [familyPlan, setFamilyPlan] = useState<FamilyPlanData | null>(null);
-  const [familyPlanLoading, setFamilyPlanLoading] = useState(false);
+  const [schedule, setSchedule] = useState<Schedule>({});
+  // Ephemeral today-override (not persisted to schedule)
+  const [todayOverride, setTodayOverride] = useState<string[] | null>(null);
 
   const refreshAll = useCallback(async () => {
     const [logData, planData, urgentData, groceryData, wasteData, analysisData] = await Promise.all([
@@ -292,16 +277,12 @@ export default function DashboardPage() {
       setBackendOnline(online);
       if (online) {
         await refreshAll();
-        const fd = await fetchFamily();
+        const [fd, sched] = await Promise.all([fetchFamily(), fetchFamilySchedule()]);
         if (fd) setFamilyData(fd as FamilyDataBasic);
+        if (sched) setSchedule(sched as Schedule);
       }
       setLoading(false);
     };
-    // Restore family selections from localStorage
-    const stored = localStorage.getItem("familySelections");
-    if (stored) {
-      try { setFamilySelections(JSON.parse(stored)); } catch { /* ignore */ }
-    }
     init();
   }, [refreshAll]);
 
@@ -366,24 +347,29 @@ export default function DashboardPage() {
     }
   };
 
-  const toggleFamilySelection = (key: string) => {
-    setFamilySelections((prev) => {
-      const next = prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key];
-      localStorage.setItem("familySelections", JSON.stringify(next));
-      return next;
-    });
-  };
+  // Today's attendance from schedule (with ephemeral override)
+  function todayScheduleType(): "weekday" | "weekend_holiday" {
+    const day = new Date().getDay();
+    return day === 0 || day === 6 ? "weekend_holiday" : "weekday";
+  }
 
-  const handleFamilyPlan = async () => {
-    if (familySelections.length === 0) return;
-    setFamilyPlanLoading(true);
-    try {
-      const data = await fetchFamilyMealPlan(familySelections);
-      setFamilyPlan(data as FamilyPlanData);
-    } catch { /* ignore */ } finally {
-      setFamilyPlanLoading(false);
+  function defaultTodayMembers(): string[] {
+    const st = todayScheduleType();
+    const keys = new Set<string>();
+    for (const mkeys of Object.values(schedule[st] ?? {})) {
+      mkeys.forEach((k: string) => keys.add(k));
     }
-  };
+    return Array.from(keys);
+  }
+
+  const todayMembers = todayOverride ?? defaultTodayMembers();
+
+  function toggleTodayMember(key: string) {
+    const current = todayOverride ?? defaultTodayMembers();
+    setTodayOverride(
+      current.includes(key) ? current.filter((k) => k !== key) : [...current, key]
+    );
+  }
 
   const STATUS_STYLE: Record<string, string> = {
     under:    "bg-yellow-100 text-yellow-700",
@@ -494,96 +480,18 @@ export default function DashboardPage() {
           <div className="lg:col-span-2 space-y-4">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <h2 className="text-base font-semibold text-gray-700">Today&apos;s Recommended Meals</h2>
-              <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs font-semibold">
-                <button
-                  onClick={() => setPlanMode("personal")}
-                  className={`px-3 py-1.5 rounded-md transition-colors ${planMode === "personal" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}
-                >
-                  Personal Plan
-                </button>
-                <button
-                  onClick={() => { setPlanMode("family"); if (familySelections.length > 0 && !familyPlan) handleFamilyPlan(); }}
-                  className={`px-3 py-1.5 rounded-md transition-colors ${planMode === "family" ? "bg-white shadow-sm text-gray-800" : "text-gray-500"}`}
-                >
-                  Family Plan
-                </button>
-              </div>
+              {familyData && todayMembers.length > 0 && (
+                <Link href="/family" className="text-xs text-green-600 hover:text-green-800 font-semibold">
+                  Household Food Plan →
+                </Link>
+              )}
             </div>
 
-            {planMode === "personal" && mealPlan?.recommendation_summary && (
+            {mealPlan?.recommendation_summary && (
               <p className="text-sm text-gray-500 italic -mt-1">{mealPlan.recommendation_summary}</p>
             )}
 
-            {/* ── Family Plan Mode ──────────────────────────────── */}
-            {planMode === "family" && (
-              <div className="space-y-3">
-                {familyPlanLoading && (
-                  <div className="text-sm text-gray-400 text-center py-6 animate-pulse">Generating family meal plan…</div>
-                )}
-                {!familyPlanLoading && familySelections.length === 0 && (
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-4 text-sm text-blue-700">
-                    Select members in the <Link href="/family" className="underline font-semibold">Family section</Link> to generate a family meal plan.
-                  </div>
-                )}
-                {!familyPlanLoading && familySelections.length > 0 && !familyPlan && (
-                  <button
-                    onClick={handleFamilyPlan}
-                    className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors"
-                  >
-                    Generate Family Meal Plan
-                  </button>
-                )}
-                {familyPlan && (
-                  <>
-                    {familyPlan.recommendation_summary && (
-                      <p className="text-sm text-gray-500 italic">{familyPlan.recommendation_summary}</p>
-                    )}
-                    {familyPlan.conflict_notes.length > 0 && (
-                      <div className="space-y-1.5">
-                        {familyPlan.conflict_notes.map((note, i) => (
-                          <p key={i} className="text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">⚠ {note}</p>
-                        ))}
-                      </div>
-                    )}
-                    {familyPlan.meals.map((meal, idx) => (
-                      <div key={idx} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                        <div className="flex items-center gap-2 mb-1 flex-wrap">
-                          <span className={`text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${MEAL_TYPE_COLORS[meal.meal_type] ?? "bg-gray-100 text-gray-600"}`}>
-                            {meal.meal_type}
-                          </span>
-                          <span className="text-sm font-semibold text-gray-900">{meal.name}</span>
-                          <span className="text-xs text-gray-400 ml-auto">{meal.estimated_macros.calories} kcal</span>
-                        </div>
-                        {meal.per_member_allocations && meal.per_member_allocations.length > 0 && (
-                          <div className="mt-2 space-y-1">
-                            {meal.per_member_allocations.map((a, ai) => (
-                              <div key={ai} className="text-xs text-gray-500 flex items-center gap-2">
-                                <span className="font-medium text-gray-700">{a.member_name}:</span>
-                                <span>{a.portion_guidance}</span>
-                                <span className="text-gray-400">({a.estimated_macros.calories} kcal)</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      onClick={handleFamilyPlan}
-                      disabled={familyPlanLoading}
-                      className="text-xs text-green-600 hover:text-green-800 font-semibold"
-                    >
-                      Regenerate →
-                    </button>
-                    <Link href="/family" className="ml-4 text-xs text-gray-400 hover:text-gray-600 font-medium">
-                      Full Family Plan →
-                    </Link>
-                  </>
-                )}
-              </div>
-            )}
-
-            {/* ── Personal Plan Mode ────────────────────────────── */}
-            {planMode === "personal" && markMsg && (
+            {markMsg && (
               <div className={`rounded-xl px-4 py-3 text-sm border ${
                 markMsg.type === "success"
                   ? "bg-green-50 border-green-200 text-green-700"
@@ -593,7 +501,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {planMode === "personal" && mealPlan && mealPlan.meals.length > 0 ? (
+            {mealPlan && mealPlan.meals.length > 0 ? (
               <>
                 <div className="space-y-4">
                   {mealPlan.meals.map((meal) => {
@@ -626,7 +534,21 @@ export default function DashboardPage() {
                         </div>
 
                         {/* Name */}
-                        <h3 className="text-lg font-semibold text-gray-900 mb-3">{meal.name}</h3>
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2">{meal.name}</h3>
+
+                        {/* Reasoning tags */}
+                        {meal.recommendation_reasons && meal.recommendation_reasons.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-3">
+                            {meal.recommendation_reasons.slice(0, 3).map((r, i) => (
+                              <span
+                                key={i}
+                                className="inline-flex items-center gap-1 text-xs bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-full font-medium"
+                              >
+                                <span className="text-green-500">✓</span> {r}
+                              </span>
+                            ))}
+                          </div>
+                        )}
 
                         {/* Score bar */}
                         <div className="mb-4">
@@ -744,13 +666,13 @@ export default function DashboardPage() {
                   </div>
                 </div>
               </>
-            ) : planMode === "personal" && mealPlan && mealPlan.meals.length === 0 ? (
+            ) : mealPlan && mealPlan.meals.length === 0 ? (
               <div className="bg-green-50 border border-green-200 rounded-2xl p-6 text-center">
                 <span className="text-3xl mb-2 block">🎉</span>
                 <p className="font-semibold text-green-700">You&apos;ve hit your nutrition targets for today!</p>
                 <p className="text-sm text-green-600 mt-1">No more meals recommended.</p>
               </div>
-            ) : planMode === "personal" ? (
+            ) : (
               <div className="bg-gray-50 border border-dashed border-gray-200 rounded-2xl p-8 text-center">
                 <span className="text-3xl mb-3 block">🥗</span>
                 <p className="font-medium text-gray-600 mb-1">No meal plan yet</p>
@@ -759,7 +681,7 @@ export default function DashboardPage() {
                   <Link href="/inventory" className="text-green-600 underline">add some ingredients</Link> to get started.
                 </p>
               </div>
-            ) : null}
+            )}
           </div>
 
           {/* ── Right: Sidebar ───────────────────────────────────────── */}
@@ -989,23 +911,29 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Who is eating today? */}
+            {/* Today's Attendance */}
             {familyData && (
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
                 <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-                  <h3 className="font-semibold text-gray-800 text-sm">Who is Eating Today?</h3>
-                  <Link href="/family" className="text-xs text-green-600 hover:text-green-800 font-semibold">
-                    Family Plan →
+                  <div>
+                    <h3 className="font-semibold text-gray-800 text-sm">Today&apos;s Attendance</h3>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {todayScheduleType() === "weekday" ? "Weekday schedule" : "Weekend schedule"}
+                      {todayOverride && " · overridden"}
+                    </p>
+                  </div>
+                  <Link href="/family" className="text-xs text-green-600 hover:text-green-800 font-semibold shrink-0">
+                    Edit Schedule →
                   </Link>
                 </div>
                 <div className="px-4 py-3 space-y-1.5">
                   {[familyData.primary_member, ...familyData.additional_members].map((member) => {
-                    const sel = familySelections.includes(member.member_key);
+                    const sel = todayMembers.includes(member.member_key);
                     return (
                       <button
                         key={member.member_key}
                         type="button"
-                        onClick={() => toggleFamilySelection(member.member_key)}
+                        onClick={() => toggleTodayMember(member.member_key)}
                         className={`w-full text-left flex items-center gap-2 px-3 py-2 rounded-lg text-xs transition-colors ${
                           sel ? "bg-green-50 text-green-800 font-semibold" : "text-gray-600 hover:bg-gray-50"
                         }`}
@@ -1023,11 +951,19 @@ export default function DashboardPage() {
                     );
                   })}
                 </div>
-                {familySelections.length > 0 && (
-                  <div className="px-4 pb-3">
-                    <p className="text-xs text-gray-400">{familySelections.length} selected — switch to Family Plan above</p>
-                  </div>
-                )}
+                <div className="px-4 pb-3 flex items-center justify-between">
+                  <p className="text-xs text-gray-400">
+                    {todayMembers.length} eating at home today
+                  </p>
+                  {todayOverride && (
+                    <button
+                      onClick={() => setTodayOverride(null)}
+                      className="text-xs text-gray-400 hover:text-gray-600"
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 

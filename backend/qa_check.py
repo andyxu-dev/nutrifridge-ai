@@ -1127,6 +1127,414 @@ for loc_id in [child_loc_id, test_loc_id]:
         except Exception:
             pass
 
+# ── 35. Meal Schedule GET returns empty structure ─────────────────────────────
+section("35. Meal schedule — GET /family/schedule")
+schedule_data = {}
+try:
+    r = requests.get(f"{BASE}/family/schedule", timeout=5)
+    check("GET /family/schedule returns 200", r.status_code == 200)
+    schedule_data = r.json()
+    check("Schedule has weekday key", "weekday" in schedule_data)
+    check("Schedule has weekend_holiday key", "weekend_holiday" in schedule_data)
+    check("weekday has breakfast key", "breakfast" in schedule_data.get("weekday", {}))
+    check("weekday has lunch key", "lunch" in schedule_data.get("weekday", {}))
+    check("weekday has dinner key", "dinner" in schedule_data.get("weekday", {}))
+except Exception as e:
+    check("GET /family/schedule", False, str(e))
+
+# ── 36. Meal Schedule PUT saves member keys ───────────────────────────────────
+section("36. Meal schedule — PUT /family/schedule (save)")
+sched_member_id = None
+try:
+    # Create a temp family member
+    r = requests.post(f"{BASE}/family/members", json={
+        "name": "Schedule Test Member",
+        "goal": "maintenance",
+        "activity_level": "moderate",
+        "sex": "male",
+        "age": 28,
+        "weight_kg": 68.0,
+        "height_cm": 172.0,
+        "health_conditions": [],
+        "allergies": [],
+        "strict_avoid_foods": [],
+        "is_active": True,
+    }, timeout=5)
+    check("Create temp member for schedule test", r.status_code == 201)
+    if r.status_code == 201:
+        sched_member_id = r.json().get("id")
+        sched_member_key = r.json().get("member_key")
+
+        # PUT schedule with primary + new member for weekday breakfast
+        put_payload = {
+            "schedule": {
+                "weekday": {
+                    "breakfast": ["primary", sched_member_key],
+                    "lunch": ["primary"],
+                    "dinner": ["primary", sched_member_key],
+                },
+                "weekend_holiday": {
+                    "breakfast": ["primary"],
+                    "lunch": [],
+                    "dinner": ["primary"],
+                },
+            }
+        }
+        r2 = requests.put(f"{BASE}/family/schedule", json=put_payload, timeout=5)
+        check("PUT /family/schedule returns 200", r2.status_code == 200)
+        msg = r2.json().get("message", "")
+        check("PUT /family/schedule returns success message", "updated" in msg.lower())
+
+        # Verify saved
+        r3 = requests.get(f"{BASE}/family/schedule", timeout=5)
+        check("GET /family/schedule after PUT returns 200", r3.status_code == 200)
+        saved = r3.json()
+        wd_breakfast = saved.get("weekday", {}).get("breakfast", [])
+        check("Weekday breakfast contains primary", "primary" in wd_breakfast)
+        check("Weekday breakfast contains new member key", sched_member_key in wd_breakfast)
+        wd_lunch = saved.get("weekday", {}).get("lunch", [])
+        check("Weekday lunch contains only primary", wd_lunch == ["primary"])
+        we_lunch = saved.get("weekend_holiday", {}).get("lunch", [])
+        check("Weekend lunch is empty list", we_lunch == [])
+except Exception as e:
+    check("PUT /family/schedule", False, str(e))
+
+# ── 37. Delete member cleans schedule ─────────────────────────────────────────
+section("37. Delete family member removes them from schedule")
+try:
+    if sched_member_id:
+        r = requests.delete(f"{BASE}/family/members/{sched_member_id}", timeout=5)
+        check("DELETE /family/members/{id} returns 200", r.status_code == 200)
+
+        # Schedule should no longer contain deleted member key
+        r2 = requests.get(f"{BASE}/family/schedule", timeout=5)
+        check("GET /family/schedule after delete returns 200", r2.status_code == 200)
+        cleaned = r2.json()
+        wd_breakfast_after = cleaned.get("weekday", {}).get("breakfast", [])
+        check(
+            "Deleted member key removed from weekday breakfast",
+            sched_member_key not in wd_breakfast_after,
+        )
+        check("Primary still present in weekday breakfast", "primary" in wd_breakfast_after)
+    else:
+        check("Delete member schedule cleanup (skipped — member not created)", False)
+except Exception as e:
+    check("Delete member cleans schedule", False, str(e))
+
+# ── 38. Family grocery with Normal vs Holiday week ────────────────────────────
+section("38. Family grocery list respects days_at_home schedule logic")
+try:
+    # weekday ×5 + weekend ×2 = 7 for primary (always home)
+    r = requests.post(f"{BASE}/family/grocery-list/weekly", json={
+        "member_keys": ["primary"],
+        "days_at_home": {"primary": 5},
+    }, timeout=5)
+    check("Family grocery with 5 days returns 200", r.status_code == 200)
+    data = r.json()
+    hn = data.get("household_nutrition_summary", {})
+    check("household_nutrition_summary has combined_weekly_targets",
+          "combined_weekly_targets" in hn)
+    iwn = hn.get("individual_weekly_needs", {})
+    check("individual_weekly_needs contains primary", "primary" in iwn)
+    primary_days = iwn.get("primary", {}).get("days_at_home", 0)
+    check("primary days_at_home is 5 as requested", primary_days == 5)
+    check("all_excluded_foods key present", "all_excluded_foods" in hn)
+    check("member_specific_notes is a list",
+          isinstance(data.get("member_specific_notes"), list))
+except Exception as e:
+    check("Family grocery days_at_home logic", False, str(e))
+
+# ── 39. Meal plan includes recommendation_reasons ─────────────────────────────
+section("39. Meal plan meals include recommendation_reasons tags")
+_rr_item_id = None
+try:
+    # Ensure at least one inventory item exists for meal plan generation
+    r_inv = requests.post(f"{BASE}/inventory", json={
+        "name": "QA Chicken Breast",
+        "quantity": 500.0,
+        "unit": "g",
+        "zone": "fridge",
+        "category": "meat",
+        "calories_per_100g": 165.0,
+    }, timeout=5)
+    if r_inv.status_code == 201:
+        _rr_item_id = r_inv.json().get("id")
+
+    r = requests.get(f"{BASE}/meal-plan/today", timeout=10)
+    check("GET /meal-plan/today returns 200", r.status_code == 200)
+    plan = r.json()
+    meals = plan.get("meals", [])
+    if meals:
+        first = meals[0]
+        check("First meal has recommendation_reasons key", "recommendation_reasons" in first)
+        check("recommendation_reasons is a list", isinstance(first.get("recommendation_reasons"), list))
+        check("recommendation_reasons has at least 1 entry", len(first.get("recommendation_reasons", [])) >= 1)
+    else:
+        check("Meal plan has at least one meal", False, "meals list is empty")
+except Exception as e:
+    check("Meal plan recommendation_reasons", False, str(e))
+finally:
+    if _rr_item_id:
+        try:
+            requests.delete(f"{BASE}/inventory/{_rr_item_id}", timeout=5)
+        except Exception:
+            pass
+
+# ── 40. Allergen hard-exclusion reflected in meal scores ─────────────────────
+section("40. Allergen filtering hard-excludes meals")
+_allergy_item_id = None
+try:
+    # Ensure inventory item for meal plan
+    r_inv2 = requests.post(f"{BASE}/inventory", json={
+        "name": "QA Eggs",
+        "quantity": 6.0,
+        "unit": "unit",
+        "zone": "fridge",
+        "category": "dairy",
+        "calories_per_100g": 155.0,
+    }, timeout=5)
+    if r_inv2.status_code == 201:
+        _allergy_item_id = r_inv2.json().get("id")
+
+    # Temporarily set a strict_avoid_foods that would affect scoring
+    r_prof = requests.get(f"{BASE}/profile", timeout=5)
+    original_avoid = []
+    if r_prof.status_code == 200:
+        original_avoid = r_prof.json().get("strict_avoid_foods", []) or []
+
+    # Add a test avoidance and regenerate meal plan
+    test_avoid = original_avoid + ["pork"]
+    rp = requests.put(f"{BASE}/profile", json={
+        "name": "QA User", "age": 30, "sex": "male", "height_cm": 175.0,
+        "weight_kg": 75.0, "activity_level": "moderate", "goal": "maintenance",
+        "strict_avoid_foods": test_avoid,
+    }, timeout=5)
+    check("PUT /profile with strict_avoid_foods returns 200", rp.status_code == 200)
+
+    r_plan = requests.get(f"{BASE}/meal-plan/today", timeout=10)
+    check("GET /meal-plan/today with avoid foods returns 200", r_plan.status_code == 200)
+    plan2 = r_plan.json()
+    meals2 = plan2.get("meals", [])
+    # No meal should contain 'pork' in its name (basic sanity check)
+    pork_meals = [m for m in meals2 if "pork" in (m.get("meal_name") or "").lower()]
+    check("No pork meals in plan when pork is strictly avoided", len(pork_meals) == 0)
+
+    # Restore original profile
+    requests.put(f"{BASE}/profile", json={
+        "name": "QA User", "age": 30, "sex": "male", "height_cm": 175.0,
+        "weight_kg": 75.0, "activity_level": "moderate", "goal": "maintenance",
+        "strict_avoid_foods": original_avoid,
+    }, timeout=5)
+except Exception as e:
+    check("Allergen hard-exclusion", False, str(e))
+finally:
+    if _allergy_item_id:
+        try:
+            requests.delete(f"{BASE}/inventory/{_allergy_item_id}", timeout=5)
+        except Exception:
+            pass
+
+# ── 41. Assistant: GET /assistant/sources ─────────────────────────────────────
+section("41. Assistant knowledge base sources are ingested")
+try:
+    r = requests.get(f"{BASE}/assistant/sources", timeout=10)
+    check("GET /assistant/sources returns 200", r.status_code == 200)
+    data = r.json()
+    check("Response has total_sources field", "total_sources" in data)
+    check("At least one knowledge source ingested", data.get("total_sources", 0) >= 1)
+    check("Response has total_chunks field", "total_chunks" in data)
+    check("At least one chunk ingested", data.get("total_chunks", 0) >= 1)
+    check("Response has sources list", isinstance(data.get("sources"), list))
+    if data.get("sources"):
+        src = data["sources"][0]
+        check("Source has source_id", "source_id" in src)
+        check("Source has title", "title" in src)
+        check("Source has organization", "organization" in src)
+        check("Source has topic", "topic" in src)
+        check("Source has chunk_count >= 1", src.get("chunk_count", 0) >= 1)
+except Exception as e:
+    check("GET /assistant/sources", False, str(e))
+
+# ── 42. Assistant: POST /assistant/ingest (force=false skips existing) ─────────
+section("42. POST /assistant/ingest skips already-ingested sources")
+try:
+    r = requests.post(f"{BASE}/assistant/ingest", json={"force": False}, timeout=15)
+    check("POST /assistant/ingest returns 200", r.status_code == 200)
+    data = r.json()
+    check("Response has status field", "status" in data)
+    check("Status is 'ok'", data.get("status") == "ok")
+    check("sources_skipped > 0 (re-ingest skips existing)", data.get("sources_skipped", 0) > 0)
+    check("Response has message field", isinstance(data.get("message"), str))
+except Exception as e:
+    check("POST /assistant/ingest", False, str(e))
+
+# ── 43. Assistant: POST /assistant/chat RAG mode ──────────────────────────────
+section("43. POST /assistant/chat (RAG mode) returns expected fields")
+_conv_id = None
+try:
+    r = requests.post(f"{BASE}/assistant/chat", json={
+        "message": "What is the safe internal temperature for cooked chicken?",
+        "mode": "rag",
+    }, timeout=30)
+    check("POST /assistant/chat (rag) returns 200", r.status_code == 200)
+    resp = r.json()
+    check("Response has conversation_id", bool(resp.get("conversation_id")))
+    check("Response has assistant_message", bool(resp.get("assistant_message")))
+    check("Response has disclaimer", bool(resp.get("disclaimer")))
+    check("Response has retrieved_sources list", isinstance(resp.get("retrieved_sources"), list))
+    check("Response has tool_calls list", isinstance(resp.get("tool_calls"), list))
+    check("Response mode is 'rag'", resp.get("mode") == "rag")
+    check("Response has grounded bool", isinstance(resp.get("grounded"), bool))
+    _conv_id = resp.get("conversation_id")
+except Exception as e:
+    check("POST /assistant/chat (rag)", False, str(e))
+
+# ── 44. Assistant: conversation persistence and history ───────────────────────
+section("44. Conversation messages are persisted across requests")
+try:
+    if _conv_id:
+        # Send a second message in the same conversation
+        r2 = requests.post(f"{BASE}/assistant/chat", json={
+            "message": "How long can I store cooked chicken in the fridge?",
+            "conversation_id": _conv_id,
+            "mode": "rag",
+        }, timeout=30)
+        check("Second chat message in same conversation returns 200", r2.status_code == 200)
+        resp2 = r2.json()
+        check("Same conversation_id returned", resp2.get("conversation_id") == _conv_id)
+
+        # Retrieve conversation history
+        r3 = requests.get(f"{BASE}/assistant/conversations/{_conv_id}", timeout=10)
+        check("GET /assistant/conversations/{id} returns 200", r3.status_code == 200)
+        history = r3.json()
+        check("History has conversation_id", history.get("conversation_id") == _conv_id)
+        check("History has messages list", isinstance(history.get("messages"), list))
+        msgs = history.get("messages", [])
+        check("At least 4 messages stored (2 user + 2 assistant)", len(msgs) >= 4)
+        roles = [m.get("role") for m in msgs]
+        check("First message role is 'user'", roles[0] == "user" if roles else False)
+        check("Messages have content field", all("content" in m for m in msgs))
+    else:
+        check("Conversation persistence (skipped — no conversation_id)", False)
+except Exception as e:
+    check("Conversation persistence", False, str(e))
+
+# ── 45. Assistant: GET /assistant/conversations/{id} — 404 for unknown id ────
+section("45. GET /assistant/conversations/{id} returns 404 for unknown conversation")
+try:
+    r = requests.get(f"{BASE}/assistant/conversations/nonexistent-conv-id-xyz123", timeout=5)
+    check("GET /conversations/nonexistent returns 404", r.status_code == 404)
+    detail = r.json().get("detail", "")
+    check("404 body contains 'not found' message", "not found" in detail.lower() or "conversation" in detail.lower())
+except Exception as e:
+    check("GET /conversations nonexistent 404", False, str(e))
+
+# ── 46. Tool service: allowlist enforcement and arg validation ─────────────────
+section("46. Tool service: allowlist and arg validation")
+try:
+    import sys as _sys, os as _os
+    _sys.path.insert(0, _os.path.dirname(__file__))
+    from app.services.tool_service import execute_tool, TOOL_SCHEMAS
+    from app.database import SessionLocal as _SessionLocal
+
+    db2 = _SessionLocal()
+    try:
+        # Non-allowlisted tool should return error
+        bad_result = execute_tool("drop_table", {}, db2)
+        check("Non-allowlisted tool returns error", bad_result.get("error") is not None)
+        check("Non-allowlisted tool result is None", bad_result.get("result") is None)
+
+        # TOOL_SCHEMAS contains exactly 10 tools
+        check("TOOL_SCHEMAS defines 10 tools", len(TOOL_SCHEMAS) == 10)
+        tool_names = {t["name"] for t in TOOL_SCHEMAS}
+        check("log_meal is in tool allowlist", "log_meal" in tool_names)
+        check("get_user_profile is in allowlist", "get_user_profile" in tool_names)
+        check("list_inventory is in allowlist", "list_inventory" in tool_names)
+        check("get_expiring_items is in allowlist", "get_expiring_items" in tool_names)
+    finally:
+        db2.close()
+except Exception as e:
+    check("Tool service allowlist", False, str(e))
+
+# ── 47. Tool service: log_meal arg validation rejects invalid inputs ───────────
+section("47. Tool service: log_meal arg validation")
+try:
+    from app.services.tool_service import execute_tool
+    from app.database import SessionLocal as _SessionLocal2
+
+    db3 = _SessionLocal2()
+    try:
+        # Negative calories — Pydantic should reject
+        bad_log = execute_tool("log_meal", {
+            "meal_type": "lunch",
+            "meal_name": "Invalid Meal",
+            "calories": -100.0,
+            "protein_g": 10.0,
+            "carbs_g": 20.0,
+            "fat_g": 5.0,
+        }, db3, confirmed_log_meal=True)
+        check("log_meal with negative calories returns error", bad_log.get("error") is not None)
+        check("log_meal with negative calories result is None", bad_log.get("result") is None)
+
+        # Missing required field — meal_type omitted
+        bad_log2 = execute_tool("log_meal", {
+            "meal_name": "No Type Meal",
+            "calories": 300.0,
+            "protein_g": 15.0,
+            "carbs_g": 30.0,
+            "fat_g": 10.0,
+        }, db3, confirmed_log_meal=True)
+        check("log_meal missing meal_type returns error", bad_log2.get("error") is not None)
+    finally:
+        db3.close()
+except Exception as e:
+    check("log_meal arg validation", False, str(e))
+
+# ── 48. Tool service: log_meal requires confirmation before DB write ───────────
+section("48. Tool service: log_meal confirmation gate")
+try:
+    from app.services.tool_service import execute_tool
+    from app.models.nutrition_log import DailyLog, MealLog
+    from app.database import SessionLocal as _SessionLocal3
+
+    db4 = _SessionLocal3()
+    try:
+        # Count existing meal logs before
+        today = datetime.date.today()
+        existing_log = db4.query(DailyLog).filter(DailyLog.date == today).first()
+        meals_before = 0
+        if existing_log:
+            meals_before = db4.query(MealLog).filter(MealLog.daily_log_id == existing_log.id).count()
+
+        # Call log_meal WITHOUT confirmation
+        preview = execute_tool("log_meal", {
+            "meal_type": "snack",
+            "meal_name": "QA Test Snack",
+            "calories": 100.0,
+            "protein_g": 5.0,
+            "carbs_g": 10.0,
+            "fat_g": 3.0,
+        }, db4, confirmed_log_meal=False)
+        check("log_meal (unconfirmed) requires_confirmation=True", preview.get("requires_confirmation") is True)
+        check("log_meal (unconfirmed) result is None", preview.get("result") is None)
+        check("log_meal (unconfirmed) returns meal_log_preview", preview.get("meal_log_preview") is not None)
+        if preview.get("meal_log_preview"):
+            mlp = preview["meal_log_preview"]
+            check("meal_log_preview has meal_name", "meal_name" in mlp)
+            check("meal_log_preview has calories", "calories" in mlp)
+
+        # Verify DB was NOT written
+        db4.expire_all()
+        existing_log2 = db4.query(DailyLog).filter(DailyLog.date == today).first()
+        meals_after = 0
+        if existing_log2:
+            meals_after = db4.query(MealLog).filter(MealLog.daily_log_id == existing_log2.id).count()
+        check("DB meal count unchanged after unconfirmed log_meal", meals_after == meals_before)
+    finally:
+        db4.close()
+except Exception as e:
+    check("log_meal confirmation gate", False, str(e))
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 total = len(results)
 passed = sum(results)
