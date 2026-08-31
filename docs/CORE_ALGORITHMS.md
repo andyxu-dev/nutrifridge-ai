@@ -6,7 +6,7 @@ All algorithm implementations live in `backend/app/services/`. This document cov
 
 ## 1. Nutrition Target Calculation (Mifflin-St Jeor)
 
-**File:** `backend/app/services/nutrition_engine.py`  
+**File:** `backend/app/services/nutrition_engine.py`
 **Function:** `calculate_nutrition_target(profile)`
 
 ### Inputs
@@ -81,7 +81,7 @@ fat_g      = target_calories × 0.30 / 9
 
 ## 2. Expiration Risk Engine
 
-**File:** `backend/app/services/expiration_engine.py`  
+**File:** `backend/app/services/expiration_engine.py`
 **Function:** `calculate_expiration_risk(item)`
 
 ### Inputs
@@ -93,7 +93,7 @@ if expiration_date is None:
     risk = "OK"
 else:
     days_remaining = (expiration_date − today).days
-    
+
     if days_remaining < 0:   risk = "CRITICAL"  (already expired)
     elif days_remaining == 0: risk = "CRITICAL"  (expires today)
     elif days_remaining <= 2: risk = "HIGH"
@@ -116,7 +116,7 @@ else:
 
 ## 3. Unit Converter
 
-**File:** `backend/app/services/unit_converter.py`  
+**File:** `backend/app/services/unit_converter.py`
 **Function:** `deduct_quantity(item_qty, item_unit, used_qty, used_unit)`
 
 ### Inputs
@@ -161,7 +161,7 @@ Case 3: units incompatible (one or both are DISCRETE, or mixed mass/discrete)
 
 ## 4. Meal Scoring (8-Component System)
 
-**File:** `backend/app/services/meal_scorer.py`  
+**File:** `backend/app/services/meal_scorer.py`
 **Function:** `score_meal(template, inventory_items, profile, daily_log, meal_type)`
 
 ### Inputs
@@ -217,7 +217,7 @@ Total score = sum of all components (can exceed 100 with bonuses, floored at 0)
 
 ## 5. Meal Plan Generation
 
-**File:** `backend/app/services/meal_planner.py`  
+**File:** `backend/app/services/meal_planner.py`
 **Function:** `generate_meal_plan(profile, inventory_items, daily_log)`
 
 ### Algorithm
@@ -225,16 +225,16 @@ Total score = sum of all components (can exceed 100 with bonuses, floored at 0)
 ```
 For each meal_type in [breakfast, lunch, dinner, snack]:
     candidates = get_templates_for_meal_type(meal_type)
-    
+
     For each template in candidates:
         score_result = score_meal(template, inventory_items, profile, daily_log, meal_type)
-    
+
     Sort candidates by score descending
-    
+
     Select top candidate that:
         - score > 0 (not hard-excluded)
         - estimated calories ≤ remaining_calories  (fits budget)
-    
+
     Add to plan
     Update remaining macros
 ```
@@ -283,7 +283,7 @@ For each meal_type in [breakfast, lunch, dinner, snack]:
 
 ## 6. Family Meal Plan Generation
 
-**File:** `backend/app/routers/family.py`  
+**File:** `backend/app/routers/family.py`
 **Endpoint:** `POST /family/meal-plan/today`
 
 ### Algorithm
@@ -317,7 +317,7 @@ Identify conflicts (e.g., one member is allergic to an ingredient another member
 
 ## 7. Family Grocery List Calculation
 
-**File:** `backend/app/routers/grocery_list.py`  
+**File:** `backend/app/routers/grocery_list.py`
 **Endpoint:** `POST /family/grocery-list/weekly`
 
 ### Inputs
@@ -373,7 +373,7 @@ Generate grocery items:
 
 ## 8. Health Constraint Policy (Java Strategy Pattern)
 
-**Interface:** `com.nutrifridge.core.constraint.HealthConstraintPolicy`  
+**Interface:** `com.nutrifridge.core.constraint.HealthConstraintPolicy`
 **File:** `backend-java/src/main/java/com/nutrifridge/core/constraint/HealthConstraintPolicy.java`
 
 ### Interface Methods
@@ -434,7 +434,7 @@ Background thread:
     6. Apply HealthConstraintService.adjustTargets()
     7. Build meal suggestions
     8. Update job status → SUCCEEDED + resultJson
-    
+
     On any exception:
     8. Update job status → FAILED + errorMessage
 ```
@@ -462,20 +462,20 @@ Background thread:
 ```
 @Transactional
 logMeal(MealLogRequest request, UserProfileDto profile):
-    
+
     For each ingredient in request.ingredientsUsed:
         item = inventoryItemRepo.findByIdForUpdate(itemId)
              // @Lock(PESSIMISTIC_WRITE) — exclusive row lock acquired here
-        
+
         if item.quantity < ingredient.quantityUsed:
             throw InventoryInsufficientException → HTTP 409
-        
+
         item.quantity -= ingredient.quantityUsed
         inventoryItemRepo.saveAndFlush(item)
              // Triggers @Version check:
              // If version mismatch → ObjectOptimisticLockingFailureException
              //                     → Caught → throw InventoryConflictException → HTTP 409
-    
+
     Create MealLog record
     Update DailyNutritionLog consumed totals
     Commit transaction

@@ -40,8 +40,8 @@ NutriFridge AI is a full-stack nutrition and fridge management application consi
      └────────────────────────────────────────┘
 ```
 
-**Active request path:** Browser → FastAPI (port 8000) → SQLite  
-**Java integration path:** FastAPI → Spring Boot (port 8080) → PostgreSQL  
+**Active request path:** Browser → FastAPI (port 8000) → SQLite
+**Java integration path:** FastAPI → Spring Boot (port 8080) → PostgreSQL
 **Current status:** Java service is fully built and tested but FastAPI does not call it in any active code path. The Spring Boot service includes a `FastApiNutritionClient` configured to call FastAPI back if needed.
 
 ---

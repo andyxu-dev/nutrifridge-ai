@@ -1,8 +1,8 @@
 # NutriFridge AI — Frontend Map
 
-**Framework:** Next.js 14 (App Router)  
-**Language:** TypeScript  
-**Styling:** TailwindCSS  
+**Framework:** Next.js 14 (App Router)
+**Language:** TypeScript
+**Styling:** TailwindCSS
 **API Client:** Native `fetch` (no axios)
 
 ---
@@ -275,5 +275,5 @@ type Schedule = Record<string, Record<string, string[]>>;  // schedule_type → 
 - `/family`
 - Plus internal Next.js routes
 
-TypeScript errors: 0  
+TypeScript errors: 0
 Build: clean

@@ -10,7 +10,7 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `users` table
 
-**Model file:** `backend/app/models/user.py`  
+**Model file:** `backend/app/models/user.py`
 **ORM class:** `User`
 
 | Column | Type | Notes |
@@ -37,7 +37,7 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `inventory` table
 
-**Model file:** `backend/app/models/inventory.py`  
+**Model file:** `backend/app/models/inventory.py`
 **ORM class:** `InventoryItem`
 
 | Column | Type | Notes |
@@ -67,7 +67,7 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `daily_logs` table
 
-**Model file:** `backend/app/models/nutrition_log.py`  
+**Model file:** `backend/app/models/nutrition_log.py`
 **ORM class:** `DailyLog`
 
 | Column | Type | Notes |
@@ -91,7 +91,7 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `meal_logs` table
 
-**Model file:** `backend/app/models/nutrition_log.py`  
+**Model file:** `backend/app/models/nutrition_log.py`
 **ORM class:** `MealLog`
 
 | Column | Type | Notes |
@@ -115,7 +115,7 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `waste_logs` table
 
-**Model file:** `backend/app/models/waste_log.py`  
+**Model file:** `backend/app/models/waste_log.py`
 **ORM class:** `WasteLog`
 
 | Column | Type | Notes |
@@ -134,7 +134,7 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `households` table
 
-**Model file:** `backend/app/models/household.py`  
+**Model file:** `backend/app/models/household.py`
 **ORM class:** `Household`
 
 | Column | Type | Notes |
@@ -149,7 +149,7 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `family_members` table
 
-**Model file:** `backend/app/models/household.py`  
+**Model file:** `backend/app/models/household.py`
 **ORM class:** `FamilyMember`
 
 | Column | Type | Notes |
@@ -177,8 +177,8 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `household_meal_schedules` table
 
-**Model file:** `backend/app/models/household.py`  
-**ORM class:** `HouseholdMealSchedule`  
+**Model file:** `backend/app/models/household.py`
+**ORM class:** `HouseholdMealSchedule`
 **Added:** Week 6
 
 | Column | Type | Notes |
@@ -201,7 +201,7 @@ All models live in `backend/app/models/`. Tables are created automatically via `
 
 ### `storage_locations` table
 
-**Model file:** `backend/app/models/location.py`  
+**Model file:** `backend/app/models/location.py`
 **ORM class:** `StorageLocation`
 
 | Column | Type | Notes |
@@ -271,7 +271,7 @@ Several columns store JSON as TEXT (SQLite has no native JSON type):
 
 ## Spring Boot / PostgreSQL Database (Java)
 
-**Managed by:** Flyway (V1–V4 migration files)  
+**Managed by:** Flyway (V1–V4 migration files)
 **Config:** `backend-java/src/main/resources/application.yml`
 
 ### `inventory_items` table
@@ -312,17 +312,17 @@ Several columns store JSON as TEXT (SQLite has no native JSON type):
 | `created_at` | TIMESTAMP | |
 | `updated_at` | TIMESTAMP | Updated via `@PreUpdate` |
 
-**Job lifecycle:** PENDING → RUNNING → SUCCEEDED or FAILED  
+**Job lifecycle:** PENDING → RUNNING → SUCCEEDED or FAILED
 **Persistence:** Survives JVM restarts (PostgreSQL-backed)
 
 ### `daily_nutrition_logs` table
 
-**JPA Entity:** `com.nutrifridge.core.domain.DailyNutritionLog`  
+**JPA Entity:** `com.nutrifridge.core.domain.DailyNutritionLog`
 (Same logical structure as FastAPI's `daily_logs`; separate store)
 
 ### `meal_logs` table (Java)
 
-**JPA Entity:** `com.nutrifridge.core.domain.MealLog`  
+**JPA Entity:** `com.nutrifridge.core.domain.MealLog`
 (Same logical structure as FastAPI's `meal_logs`; FK to `daily_nutrition_logs`)
 
 ### Flyway Migrations

@@ -1,10 +1,10 @@
 # NutriFridge AI — Backend Map (FastAPI)
 
-**Runtime:** Python 3.11+  
-**Framework:** FastAPI + Uvicorn  
-**ORM:** SQLAlchemy 2.0  
-**Validation:** Pydantic v2  
-**Database:** SQLite (`nutrifridge.db`)  
+**Runtime:** Python 3.11+
+**Framework:** FastAPI + Uvicorn
+**ORM:** SQLAlchemy 2.0
+**Validation:** Pydantic v2
+**Database:** SQLite (`nutrifridge.db`)
 **Entry point:** `backend/app/main.py`
 
 ---
@@ -292,8 +292,8 @@ All services live in `backend/app/services/`.
 
 ## QA Script
 
-**File:** `backend/qa_check.py`  
-**Run command:** `cd backend && source ../venv/bin/activate && python qa_check.py`  
+**File:** `backend/qa_check.py`
+**Run command:** `cd backend && source ../venv/bin/activate && python qa_check.py`
 **Requires:** FastAPI server running on port 8000
 
 **38 test sections, 231 assertions total (Week 6):**
@@ -325,8 +325,8 @@ All services live in `backend/app/services/`.
 
 ## Seed Script
 
-**File:** `backend/seed.py`  
-**Run command:** `cd backend && source ../venv/bin/activate && python seed.py`  
+**File:** `backend/seed.py`
+**Run command:** `cd backend && source ../venv/bin/activate && python seed.py`
 
 Populates the database with:
 - Sample user profile
