@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, Float, String, Text, Date, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, Float, String, Text, Date, DateTime, ForeignKey, Index
 from sqlalchemy.orm import relationship
 from app.database import Base
 
@@ -33,7 +33,16 @@ class MealLog(Base):
     fat_g = Column(Float, nullable=False)
     ingredients_used = Column(String, nullable=True)  # JSON text
     source = Column(String, default="recommended", nullable=True)  # recommended / manual
+    assistant_confirmation_token = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.now)
+    __table_args__ = (
+        Index(
+            "ix_meal_logs_assistant_confirmation_token",
+            "assistant_confirmation_token",
+            unique=True,
+            sqlite_where=assistant_confirmation_token.is_not(None),
+        ),
+    )
 
     daily_log = relationship("DailyLog", back_populates="meal_logs")

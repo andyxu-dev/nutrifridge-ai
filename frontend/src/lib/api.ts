@@ -141,6 +141,7 @@ export async function assistantChat(payload: {
   conversation_id?: string;
   mode?: "rag" | "agent";
   confirm_log_meal?: boolean;
+  confirmation_token?: string;
 }) {
   return request("/assistant/chat", {
     method: "POST",

@@ -11,9 +11,10 @@ Arguments are validated via Pydantic models before execution.
 
 import json
 from datetime import date
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.user import User
@@ -28,30 +29,36 @@ from app.services.meal_planner import generate_meal_plan
 # ── Argument schemas (Pydantic, validated before execution) ────────────────
 
 class GetInventoryItemArgs(BaseModel):
-    name: str = Field(..., description="Partial or full name of the inventory item to look up")
+    name: str = Field(..., min_length=1, max_length=120, description="Partial or full name of the inventory item to look up")
 
 
 class GetExpiredRiskArgs(BaseModel):
-    item_name: str = Field(..., description="Name of the inventory item to check expiration risk for")
+    item_name: str = Field(..., min_length=1, max_length=120, description="Name of the inventory item to check expiration risk for")
 
 
 class SearchFoodNutritionArgs(BaseModel):
-    query: str = Field(..., description="Food name to search in the nutrition database")
+    query: str = Field(..., min_length=1, max_length=120, description="Food name to search in the nutrition database")
 
 
 class GetRecentMealLogsArgs(BaseModel):
     limit: int = Field(default=5, ge=1, le=20, description="Number of recent meal logs to return (1–20)")
 
 
+class ToolIngredientUsed(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    quantity: float = Field(..., gt=0)
+    unit: str = Field(..., min_length=1, max_length=24)
+
+
 class LogMealArgs(BaseModel):
-    meal_type: str = Field(..., description="One of: breakfast, lunch, dinner, snack")
-    meal_name: str = Field(..., description="Name of the meal")
-    calories: float = Field(..., gt=0, description="Total calories in kcal")
-    protein_g: float = Field(..., ge=0, description="Protein in grams")
-    carbs_g: float = Field(..., ge=0, description="Carbohydrates in grams")
-    fat_g: float = Field(..., ge=0, description="Fat in grams")
-    notes: Optional[str] = Field(default=None, description="Optional notes about the meal")
-    ingredients_used: List[Dict] = Field(
+    meal_type: Literal["breakfast", "lunch", "dinner", "snack"] = Field(..., description="One of: breakfast, lunch, dinner, snack")
+    meal_name: str = Field(..., min_length=1, max_length=160, description="Name of the meal")
+    calories: float = Field(..., gt=0, le=5000, description="Total calories in kcal")
+    protein_g: float = Field(..., ge=0, le=500, description="Protein in grams")
+    carbs_g: float = Field(..., ge=0, le=1000, description="Carbohydrates in grams")
+    fat_g: float = Field(..., ge=0, le=500, description="Fat in grams")
+    notes: Optional[str] = Field(default=None, max_length=500, description="Optional notes about the meal")
+    ingredients_used: List[ToolIngredientUsed] = Field(
         default_factory=list,
         description="List of ingredients: [{name, quantity, unit}]"
     )
@@ -229,6 +236,8 @@ def execute_tool(
     tool_input: Dict,
     db: Session,
     confirmed_log_meal: bool = False,
+    assistant_confirmation_token: Optional[str] = None,
+    commit_confirmed_log: bool = True,
 ) -> Dict:
     """
     Execute a tool call and return a structured result.
@@ -275,11 +284,25 @@ def execute_tool(
             return _get_recommended_meals(db)
         elif tool_name == "log_meal":
             args = LogMealArgs(**tool_input)
-            return _log_meal(args, db, confirmed_log_meal)
+            return _log_meal(
+                args,
+                db,
+                confirmed_log_meal,
+                assistant_confirmation_token=assistant_confirmation_token,
+                commit_confirmed_log=commit_confirmed_log,
+            )
         else:
             return _error(f"Tool '{tool_name}' handler not implemented.")
-    except Exception as e:
-        return _error(str(e))
+    except ValidationError as e:
+        return _error(f"Invalid tool arguments: {e.errors()[0]['msg']}")
+    except IntegrityError:
+        db.rollback()
+        return _error("Duplicate meal confirmation; this meal was already logged.")
+    except SQLAlchemyError:
+        db.rollback()
+        return _error("Tool execution failed. Please try again.")
+    except Exception:
+        return _error("Tool execution failed. Please try again.")
 
 
 # ── Individual tool handlers ───────────────────────────────────────────────
@@ -417,8 +440,16 @@ def _get_expiration_risk(item_name: str, db: Session) -> Dict:
             "best_before_date": str(item.best_before_date) if item.best_before_date else None,
             "days_until_expiry": days_left,
             "expiration_risk": risk,
+            "safety_caveat": (
+                "This is date-based only. Do not assume the food is safe without "
+                "checking storage temperature, package condition, smell/texture, and handling history."
+            ),
         },
-        "summary": f"{item.name} — expiration risk: {risk}" + (f" ({days_left} days left)" if days_left is not None else ""),
+        "summary": (
+            f"{item.name} — date-based expiration risk: {risk}"
+            + (f" ({days_left} days left)" if days_left is not None else "")
+            + "; storage/handling still matters"
+        ),
         "requires_confirmation": False,
         "meal_log_preview": None,
         "error": None,
@@ -559,7 +590,13 @@ def _get_recommended_meals(db: Session) -> Dict:
     }
 
 
-def _log_meal(args: LogMealArgs, db: Session, confirmed: bool) -> Dict:
+def _log_meal(
+    args: LogMealArgs,
+    db: Session,
+    confirmed: bool,
+    assistant_confirmation_token: Optional[str] = None,
+    commit_confirmed_log: bool = True,
+) -> Dict:
     """If not confirmed, return preview. If confirmed, write to DB."""
     preview = {
         "meal_type": args.meal_type,
@@ -569,7 +606,7 @@ def _log_meal(args: LogMealArgs, db: Session, confirmed: bool) -> Dict:
         "carbs_g": args.carbs_g,
         "fat_g": args.fat_g,
         "notes": args.notes,
-        "ingredients_used": args.ingredients_used,
+        "ingredients_used": [ing.model_dump() for ing in args.ingredients_used],
     }
 
     if not confirmed:
@@ -584,8 +621,25 @@ def _log_meal(args: LogMealArgs, db: Session, confirmed: bool) -> Dict:
             "error": None,
         }
 
-    # Execute the write
-    from app.services.nutrition_engine import calculate_nutrition_target
+    if assistant_confirmation_token:
+        existing = (
+            db.query(MealLog)
+            .filter(
+                MealLog.assistant_confirmation_token == assistant_confirmation_token
+            )
+            .first()
+        )
+        if existing:
+            return {
+                "result": {"logged": False, "meal_log_id": existing.id},
+                "summary": (
+                    "This meal confirmation was already used; the meal was not "
+                    "logged again."
+                ),
+                "requires_confirmation": False,
+                "meal_log_preview": None,
+                "error": "duplicate_confirmation_token",
+            }
 
     user = db.query(User).first()
     if not user:
@@ -603,7 +657,11 @@ def _log_meal(args: LogMealArgs, db: Session, confirmed: bool) -> Dict:
             fat_consumed_g=0.0,
         )
         db.add(daily_log)
-        db.flush()
+        try:
+            db.flush()
+        except SQLAlchemyError:
+            db.rollback()
+            return _error("Tool execution failed. Please try again.")
 
     meal_log = MealLog(
         daily_log_id=daily_log.id,
@@ -613,8 +671,9 @@ def _log_meal(args: LogMealArgs, db: Session, confirmed: bool) -> Dict:
         protein_g=args.protein_g,
         carbs_g=args.carbs_g,
         fat_g=args.fat_g,
-        ingredients_used=json.dumps(args.ingredients_used),
+        ingredients_used=json.dumps([ing.model_dump() for ing in args.ingredients_used]),
         source="assistant",
+        assistant_confirmation_token=assistant_confirmation_token,
         notes=args.notes or "",
     )
     db.add(meal_log)
@@ -624,7 +683,30 @@ def _log_meal(args: LogMealArgs, db: Session, confirmed: bool) -> Dict:
     daily_log.carbs_consumed_g = round(daily_log.carbs_consumed_g + args.carbs_g, 1)
     daily_log.fat_consumed_g = round(daily_log.fat_consumed_g + args.fat_g, 1)
 
-    db.commit()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return {
+            "result": {"logged": False, "meal_log_id": None},
+            "summary": (
+                "This meal confirmation was already used; the meal was not "
+                "logged again."
+            ),
+            "requires_confirmation": False,
+            "meal_log_preview": None,
+            "error": "duplicate_confirmation_token",
+        }
+    except SQLAlchemyError:
+        db.rollback()
+        return _error("Tool execution failed. Please try again.")
+
+    if commit_confirmed_log:
+        try:
+            db.commit()
+        except SQLAlchemyError:
+            db.rollback()
+            return _error("Tool execution failed. Please try again.")
 
     return {
         "result": {"logged": True, "meal_log_id": meal_log.id},

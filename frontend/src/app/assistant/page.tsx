@@ -46,6 +46,7 @@ type ChatMessage = {
   inventory_context?: InventoryContext[];
   meal_log_preview?: MealLogPreview | null;
   requires_confirmation?: boolean;
+  pending_confirmation_token?: string | null;
   grounded?: boolean;
   warnings?: string[];
 };
@@ -170,6 +171,7 @@ export default function AssistantPage() {
   const [pendingConfirm, setPendingConfirm] = useState<{
     preview: MealLogPreview;
     convId: string;
+    token: string;
   } | null>(null);
   const [confirming, setConfirming] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -184,8 +186,8 @@ export default function AssistantPage() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const sendMessage = async (text: string, confirmLog = false) => {
-    if (!text.trim() || sending) return;
+  const sendMessage = async (text: string, confirmLog = false, confirmationToken?: string): Promise<boolean> => {
+    if (!text.trim() || sending) return false;
     setSending(true);
 
     const userMsg: ChatMessage = { role: "user", content: text };
@@ -198,11 +200,22 @@ export default function AssistantPage() {
         conversation_id: conversationId,
         mode,
         confirm_log_meal: confirmLog,
+        confirmation_token: confirmLog ? confirmationToken : undefined,
       });
 
       if (!conversationId && response.conversation_id) {
         setConversationId(response.conversation_id);
       }
+
+      const confirmationTokenValue =
+        typeof response.pending_confirmation_token === "string"
+          ? response.pending_confirmation_token.trim()
+          : "";
+      const missingConfirmationToken =
+        Boolean(response.requires_confirmation) &&
+        Boolean(response.meal_log_preview) &&
+        !confirmationTokenValue;
+      const warnings = response.warnings ?? [];
 
       const assistantMsg: ChatMessage = {
         role: "assistant",
@@ -213,16 +226,20 @@ export default function AssistantPage() {
         meal_log_preview: response.meal_log_preview ?? null,
         requires_confirmation: response.requires_confirmation ?? false,
         grounded: response.grounded ?? false,
-        warnings: response.warnings ?? [],
+        warnings: missingConfirmationToken
+          ? [...warnings, "Meal log confirmation is temporarily unavailable. Please request the preview again."]
+          : warnings,
       };
       setMessages((prev) => [...prev, assistantMsg]);
 
-      if (response.requires_confirmation && response.meal_log_preview) {
+      if (response.requires_confirmation && response.meal_log_preview && confirmationTokenValue) {
         setPendingConfirm({
           preview: response.meal_log_preview,
           convId: response.conversation_id,
+          token: confirmationTokenValue,
         });
       }
+      return true;
     } catch (e) {
       setMessages((prev) => [
         ...prev,
@@ -231,6 +248,7 @@ export default function AssistantPage() {
           content: `Sorry, something went wrong: ${e instanceof Error ? e.message : "unknown error"}`,
         },
       ]);
+      return false;
     } finally {
       setSending(false);
     }
@@ -238,9 +256,12 @@ export default function AssistantPage() {
 
   const handleConfirmLog = async () => {
     if (!pendingConfirm) return;
+    const token = pendingConfirm.token;
     setConfirming(true);
-    setPendingConfirm(null);
-    await sendMessage("Yes, please log this meal.", true);
+    const confirmed = await sendMessage("Yes, please log this meal.", true, token);
+    if (confirmed) {
+      setPendingConfirm(null);
+    }
     setConfirming(false);
   };
 
@@ -444,7 +465,9 @@ export default function AssistantPage() {
                 {/* Grounding indicator */}
                 {msg.role === "assistant" && (
                   <p className={`text-xs ${msg.grounded ? "text-green-500" : "text-gray-400"}`}>
-                    {msg.grounded ? "✓ Grounded in knowledge base or live data" : "General knowledge — no sources retrieved"}
+                    {msg.grounded
+                      ? (msg.retrieved_sources?.length ? "Grounded in retrieved knowledge-base sources" : "Checked live app data")
+                      : "General knowledge — no sources retrieved"}
                   </p>
                 )}
 

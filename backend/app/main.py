@@ -35,6 +35,7 @@ def _migrate_db() -> None:
         # Week 4 — source + notes on meal_logs table
         "ALTER TABLE meal_logs ADD COLUMN source VARCHAR",
         "ALTER TABLE meal_logs ADD COLUMN notes TEXT",
+        "ALTER TABLE meal_logs ADD COLUMN assistant_confirmation_token VARCHAR",
         # Week 5 — location tracking on inventory
         "ALTER TABLE inventory ADD COLUMN location_id INTEGER",
     ]
@@ -45,6 +46,13 @@ def _migrate_db() -> None:
                 conn.commit()
             except Exception:
                 pass  # column already exists
+        conn.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS "
+            "ix_meal_logs_assistant_confirmation_token "
+            "ON meal_logs (assistant_confirmation_token) "
+            "WHERE assistant_confirmation_token IS NOT NULL"
+        ))
+        conn.commit()
 
 
 def _seed_defaults(db: Session) -> None:
