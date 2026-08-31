@@ -8,6 +8,7 @@ qualified healthcare professional.
 """
 
 import json
+import re
 from typing import Dict, List, Set
 
 
@@ -59,6 +60,25 @@ def get_hard_excluded_foods(user) -> Set[str]:
 
     excluded.discard("")
     return excluded
+
+
+def contains_food_term(text: str, term: str) -> bool:
+    """Case-insensitive term match with word boundaries for food words."""
+    normalized = " ".join((text or "").lower().split())
+    normalized_term = " ".join((term or "").lower().strip().split())
+    if not normalized or not normalized_term:
+        return False
+    pattern = r"\b" + re.escape(normalized_term).replace(r"\ ", r"\s+") + r"\b"
+    return re.search(pattern, normalized) is not None
+
+
+def is_hard_excluded_item(name: str, category: str, excluded: Set[str]) -> bool:
+    """Return whether an item name/category matches a hard exclusion."""
+    normalized_category = (category or "").strip().lower()
+    return any(
+        ex == normalized_category or contains_food_term(name, ex)
+        for ex in excluded
+    )
 
 
 def get_tag_penalties(user) -> Dict[str, float]:

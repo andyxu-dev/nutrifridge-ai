@@ -5,9 +5,10 @@ Returns a score (0–100), a breakdown dict, a human-readable explanation,
 and an 'excluded' flag for hard-excluded meals.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Set
 
 from app.services.expiration_engine import get_expiration_risk
+from app.services.health_constraint_engine import contains_food_term, is_hard_excluded_item
 
 _CUISINE_MATCH = 10
 _DIET_MATCH = 15
@@ -19,6 +20,34 @@ _VARIETY = 7
 _HEALTH_CONSTRAINT_MAX = 30
 
 _DISLIKE_PENALTY = 25
+
+
+def _template_exclusion_hits(template: dict, hard_excluded: Set[str]) -> List[str]:
+    """Return hard-exclusion terms that appear in template-level recipe text."""
+    instructions = " ".join(str(step) for step in template.get("instructions", []))
+    category_text = " ".join(
+        str(v)
+        for key in ("preferred_categories", "required_categories", "tags")
+        for v in template.get(key, [])
+    )
+    text = " ".join([
+        str(template.get("name", "")),
+        str(template.get("cuisine", "")),
+        str(template.get("macro_profile", "")),
+        instructions,
+        category_text,
+    ])
+    return sorted(ex for ex in hard_excluded if contains_food_term(text, ex))
+
+
+def _matched_item_exclusion_hits(matched_items: List, hard_excluded: Set[str]) -> List[str]:
+    hits: List[str] = []
+    for item in matched_items:
+        name = getattr(item, "name", "")
+        category = getattr(item, "category", "")
+        if is_hard_excluded_item(name, category, hard_excluded):
+            hits.append(name)
+    return hits
 
 
 def _cooking_time_ok(template_minutes: int, preference: Optional[str]) -> bool:
@@ -76,23 +105,24 @@ def score_meal(
 
     # ── 0. Hard exclusion check ─────────────────────────────────────────────
     hard_excluded = get_hard_excluded_foods(user)
-    if hard_excluded and matched_items:
-        excluded_items = [
-            i.name for i in matched_items
-            if any(ex in i.name.lower() for ex in hard_excluded)
-        ]
-        if excluded_items:
+    if hard_excluded:
+        excluded_items = _matched_item_exclusion_hits(matched_items, hard_excluded)
+        excluded_template_terms = _template_exclusion_hits(template, hard_excluded)
+        if excluded_items or excluded_template_terms:
             breakdown["allergy_exclusion"] = -100.0
+            excluded_display = excluded_items + [
+                f"template contains '{term}'" for term in excluded_template_terms
+            ]
             return {
                 "total": 0.0,
                 "excluded": True,
                 "breakdown": breakdown,
                 "explanation": (
-                    f"Excluded: contains {', '.join(excluded_items)} "
+                    f"Excluded: contains {', '.join(excluded_display)} "
                     "(allergy or avoidance restriction)."
                 ),
                 "recommendation_reasons": [
-                    f"Excluded — contains allergen/avoided food: {', '.join(excluded_items)}"
+                    f"Excluded — contains allergen/avoided food: {', '.join(excluded_display)}"
                 ],
             }
 

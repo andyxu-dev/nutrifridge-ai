@@ -5,6 +5,10 @@ from app.services.expiration_engine import get_expiration_risk, RISK_ORDER
 from app.services.nutrition_engine import calculate_nutrition_target
 from app.services.meal_templates import get_templates_for_meal_type
 from app.services.meal_scorer import score_meal
+from app.services.health_constraint_engine import (
+    get_hard_excluded_foods,
+    is_hard_excluded_item,
+)
 
 _DEFAULT_SERVING_G = 150
 
@@ -129,6 +133,15 @@ def generate_meal_plan(
     consumed: Optional[Dict] = None,
 ) -> Dict:
     target = calculate_nutrition_target(user)
+    hard_excluded = get_hard_excluded_foods(user)
+    safe_inventory_items = [
+        item for item in inventory_items
+        if not is_hard_excluded_item(
+            item.name or "",
+            item.category or "",
+            hard_excluded,
+        )
+    ]
 
     if remaining_macros is None:
         remaining_macros = {k: target[k] for k in ["calories", "protein_g", "carbs_g", "fat_g"]}
@@ -152,7 +165,7 @@ def generate_meal_plan(
         best_score = -1.0
 
         for tmpl in templates:
-            matched = _match_items_to_template(tmpl, inventory_items, used_ids)
+            matched = _match_items_to_template(tmpl, safe_inventory_items, used_ids)
             if not matched:
                 continue
             candidate = _build_meal_from_template(tmpl, matched, user, remaining_macros)
@@ -179,7 +192,7 @@ def generate_meal_plan(
             inventory_items,
             key=lambda i: RISK_ORDER.get(get_expiration_risk(i.best_before_date), 4),
         )
-        if get_expiration_risk(i.best_before_date) in ("expired", "high", "medium")
+        if i in safe_inventory_items and get_expiration_risk(i.best_before_date) in ("expired", "high", "medium")
     ][:3]
 
     gap_parts = []

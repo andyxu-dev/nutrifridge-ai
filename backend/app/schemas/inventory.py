@@ -1,7 +1,7 @@
 from typing import Optional
 from datetime import date
 from enum import Enum
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ZoneEnum(str, Enum):
@@ -22,18 +22,18 @@ class CategoryEnum(str, Enum):
 
 
 class InventoryBase(BaseModel):
-    name: str
-    quantity: float
-    unit: str
+    name: str = Field(..., min_length=1, max_length=120)
+    quantity: float = Field(..., ge=0)
+    unit: str = Field(..., min_length=1, max_length=24)
     zone: ZoneEnum
     category: CategoryEnum
     added_date: Optional[date] = None
     best_before_date: Optional[date] = None
-    calories_per_100g: Optional[float] = None
-    protein_per_100g: Optional[float] = None
-    carbs_per_100g: Optional[float] = None
-    fat_per_100g: Optional[float] = None
-    notes: Optional[str] = None
+    calories_per_100g: Optional[float] = Field(default=None, ge=0)
+    protein_per_100g: Optional[float] = Field(default=None, ge=0)
+    carbs_per_100g: Optional[float] = Field(default=None, ge=0)
+    fat_per_100g: Optional[float] = Field(default=None, ge=0)
+    notes: Optional[str] = Field(default=None, max_length=500)
     location_id: Optional[int] = None
 
 

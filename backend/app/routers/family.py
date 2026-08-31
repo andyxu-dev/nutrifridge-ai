@@ -22,7 +22,10 @@ from app.schemas.household import (
     FamilyMemberResponse,
     FamilyMemberUpdate,
 )
-from app.services.health_constraint_engine import get_hard_excluded_foods
+from app.services.health_constraint_engine import (
+    get_hard_excluded_foods,
+    is_hard_excluded_item,
+)
 from app.services.meal_planner import generate_meal_plan
 from app.services.nutrition_engine import calculate_nutrition_target
 
@@ -433,7 +436,11 @@ def list_family_members(db: Session = Depends(get_db)):
 @router.get("/members/{member_id}")
 def get_family_member(member_id: int, db: Session = Depends(get_db)):
     """Return a single family member."""
-    member = db.query(FamilyMember).filter(FamilyMember.id == member_id).first()
+    household = _get_or_create_household(db)
+    member = db.query(FamilyMember).filter(
+        FamilyMember.id == member_id,
+        FamilyMember.household_id == household.id,
+    ).first()
     if not member:
         raise HTTPException(status_code=404, detail=f"Family member {member_id} not found")
     return _member_db_to_dict(member)
@@ -446,7 +453,11 @@ def update_family_member(
     db: Session = Depends(get_db),
 ):
     """Update a family member's fields."""
-    member = db.query(FamilyMember).filter(FamilyMember.id == member_id).first()
+    household = _get_or_create_household(db)
+    member = db.query(FamilyMember).filter(
+        FamilyMember.id == member_id,
+        FamilyMember.household_id == household.id,
+    ).first()
     if not member:
         raise HTTPException(status_code=404, detail=f"Family member {member_id} not found")
 
@@ -467,12 +478,15 @@ def update_family_member(
 @router.delete("/members/{member_id}")
 def delete_family_member(member_id: int, db: Session = Depends(get_db)):
     """Delete a family member and remove them from all schedule slots."""
-    member = db.query(FamilyMember).filter(FamilyMember.id == member_id).first()
+    household = _get_or_create_household(db)
+    member = db.query(FamilyMember).filter(
+        FamilyMember.id == member_id,
+        FamilyMember.household_id == household.id,
+    ).first()
     if not member:
         raise HTTPException(status_code=404, detail=f"Family member {member_id} not found")
 
     member_key = f"member:{member_id}"
-    household = _get_or_create_household(db)
     for slot in db.query(HouseholdMealSchedule).filter(
         HouseholdMealSchedule.household_id == household.id
     ).all():
@@ -520,6 +534,8 @@ def update_schedule(payload: ScheduleUpdateRequest, db: Session = Depends(get_db
         for mt, member_keys in meals.items():
             if mt not in _MEAL_TYPES:
                 continue
+            for member_key in member_keys:
+                _resolve_member(member_key, db, household)
             existing = (
                 db.query(HouseholdMealSchedule)
                 .filter(
@@ -809,7 +825,7 @@ def family_grocery_list(payload: FamilyGroceryRequest, db: Session = Depends(get
 
     # 1. Restock low-stock items
     for item in low_stock:
-        if not any(ex in item.name.lower() for ex in all_excluded):
+        if not is_hard_excluded_item(item.name, item.category, all_excluded):
             recommended_to_buy.append({
                 "name": item.name,
                 "category": item.category,
@@ -829,9 +845,10 @@ def family_grocery_list(payload: FamilyGroceryRequest, db: Session = Depends(get
         default=0,
     )
     if total_protein_available < min_weekly_protein / 2:
-        if not any(
-            ex in "chicken breast" for ex in all_excluded
-        ) and "chicken breast" not in present_names_lower:
+        if (
+            not is_hard_excluded_item("Chicken Breast", "meat", all_excluded)
+            and "chicken breast" not in present_names_lower
+        ):
             recommended_to_buy.append({
                 "name": "Chicken Breast",
                 "category": "meat",
@@ -845,7 +862,7 @@ def family_grocery_list(payload: FamilyGroceryRequest, db: Session = Depends(get
         name_lower = name_s.lower()
         if any(name_lower in p or p in name_lower for p in present_names_lower):
             continue  # already stocked
-        if any(ex in name_lower for ex in all_excluded):
+        if is_hard_excluded_item(name_s, cat, all_excluded):
             continue  # excluded by a household member
         if any(r["name"].lower() == name_lower for r in recommended_to_buy):
             continue  # already added

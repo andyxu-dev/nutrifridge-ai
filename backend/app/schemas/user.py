@@ -1,7 +1,7 @@
 import json
 from typing import List, Optional
 from enum import Enum
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class SexEnum(str, Enum):
@@ -56,10 +56,10 @@ class MacroStrategyEnum(str, Enum):
 
 
 class UserBase(BaseModel):
-    name: str
-    height_cm: float
-    weight_kg: float
-    age: int
+    name: str = Field(..., min_length=1, max_length=120)
+    height_cm: float = Field(..., gt=0, le=260)
+    weight_kg: float = Field(..., gt=0, le=500)
+    age: int = Field(..., ge=13, le=120)
     sex: SexEnum
     activity_level: ActivityLevelEnum
     goal: GoalEnum
@@ -77,10 +77,10 @@ class UserBase(BaseModel):
     allergies: Optional[List[str]] = None
     strict_avoid_foods: Optional[List[str]] = None
     macro_strategy: Optional[MacroStrategyEnum] = None
-    custom_calorie_target: Optional[float] = None
-    custom_protein_g: Optional[float] = None
-    custom_carbs_g: Optional[float] = None
-    custom_fat_g: Optional[float] = None
+    custom_calorie_target: Optional[float] = Field(default=None, gt=0, le=10000)
+    custom_protein_g: Optional[float] = Field(default=None, ge=0, le=1000)
+    custom_carbs_g: Optional[float] = Field(default=None, ge=0, le=2000)
+    custom_fat_g: Optional[float] = Field(default=None, ge=0, le=1000)
 
 
 class UserCreate(UserBase):

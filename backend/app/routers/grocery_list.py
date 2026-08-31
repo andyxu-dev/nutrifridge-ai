@@ -16,6 +16,10 @@ from app.models.inventory import InventoryItem
 from app.models.nutrition_log import DailyLog
 from app.services.nutrition_engine import calculate_nutrition_target
 from app.services.expiration_engine import get_expiration_risk
+from app.services.health_constraint_engine import (
+    get_hard_excluded_foods,
+    is_hard_excluded_item,
+)
 
 router = APIRouter(prefix="/grocery-list", tags=["grocery-list"])
 
@@ -185,6 +189,7 @@ def get_weekly_grocery_list(db: Session = Depends(get_db)):
     # ── Recommend to buy ──────────────────────────────────────────────────
     staples = _get_staples(user)
     present_names_lower = {i.name.lower() for i in inventory}
+    hard_excluded = get_hard_excluded_foods(user)
 
     # De-duplicate disliked foods
     raw_dislikes = getattr(user, "disliked_foods", None)
@@ -201,6 +206,8 @@ def get_weekly_grocery_list(db: Session = Depends(get_db)):
 
     # 1. Low-stock items
     for item in low_stock:
+        if is_hard_excluded_item(item.name, item.category, hard_excluded):
+            continue
         recommended_to_buy.append({
             "name": item.name,
             "category": item.category,
@@ -209,7 +216,11 @@ def get_weekly_grocery_list(db: Session = Depends(get_db)):
         })
 
     # 2. Missing protein sources if protein-low
-    if protein_low and "meat" not in present_categories:
+    if (
+        protein_low
+        and "meat" not in present_categories
+        and not is_hard_excluded_item("Chicken Breast", "meat", hard_excluded)
+    ):
         recommended_to_buy.append({
             "name": "Chicken Breast",
             "category": "meat",
@@ -224,6 +235,8 @@ def get_weekly_grocery_list(db: Session = Depends(get_db)):
             continue  # already have it
         if any(d in name_lower or name_lower in d for d in dislikes):
             continue  # user dislikes it
+        if is_hard_excluded_item(name, category, hard_excluded):
+            continue  # hard exclusion from allergy / strict avoid / health condition
         if any(r["name"].lower() == name_lower for r in recommended_to_buy):
             continue  # already added
         recommended_to_buy.append({
