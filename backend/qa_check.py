@@ -14,6 +14,7 @@ PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
 
 results = []
+qa_fixture_item_ids = []
 
 
 def check(label: str, ok: bool, detail: str = ""):
@@ -28,6 +29,141 @@ def check(label: str, ok: bool, detail: str = ""):
 
 def section(title: str):
     print(f"\n── {title} {'─' * max(0, 55 - len(title))}")
+
+
+def _default_location_ids_by_zone() -> dict:
+    try:
+        r = requests.get(f"{BASE}/locations", timeout=5)
+        if r.status_code != 200:
+            return {}
+        locations = r.json()
+    except Exception:
+        return {}
+
+    by_zone = {}
+    for loc in locations:
+        zone = loc.get("temperature_zone")
+        if zone and zone not in by_zone:
+            by_zone[zone] = loc.get("id")
+    return by_zone
+
+
+def _create_qa_inventory_fixtures(today: datetime.date) -> None:
+    """Create deterministic QA-owned inventory needed by later planning checks."""
+    location_ids = _default_location_ids_by_zone()
+    fixtures = [
+        {
+            "name": "QA Fixture Chicken Breast",
+            "quantity": 900.0,
+            "unit": "g",
+            "zone": "fridge",
+            "category": "meat",
+            "added_date": str(today),
+            "best_before_date": str(today + datetime.timedelta(days=2)),
+            "calories_per_100g": 165.0,
+            "protein_per_100g": 31.0,
+            "carbs_per_100g": 0.0,
+            "fat_per_100g": 3.6,
+        },
+        {
+            "name": "QA Fixture Spinach",
+            "quantity": 300.0,
+            "unit": "g",
+            "zone": "fridge",
+            "category": "vegetable",
+            "added_date": str(today),
+            "best_before_date": str(today + datetime.timedelta(days=3)),
+            "calories_per_100g": 23.0,
+            "protein_per_100g": 2.9,
+            "carbs_per_100g": 3.6,
+            "fat_per_100g": 0.4,
+        },
+        {
+            "name": "QA Fixture Cooked Rice",
+            "quantity": 800.0,
+            "unit": "g",
+            "zone": "fridge",
+            "category": "grain",
+            "added_date": str(today),
+            "best_before_date": str(today + datetime.timedelta(days=2)),
+            "calories_per_100g": 130.0,
+            "protein_per_100g": 2.7,
+            "carbs_per_100g": 28.0,
+            "fat_per_100g": 0.3,
+        },
+        {
+            "name": "QA Fixture Greek Yogurt",
+            "quantity": 500.0,
+            "unit": "g",
+            "zone": "fridge",
+            "category": "dairy",
+            "added_date": str(today),
+            "best_before_date": str(today + datetime.timedelta(days=7)),
+            "calories_per_100g": 59.0,
+            "protein_per_100g": 10.0,
+            "carbs_per_100g": 3.6,
+            "fat_per_100g": 0.4,
+        },
+        {
+            "name": "QA Fixture Garlic",
+            "quantity": 200.0,
+            "unit": "g",
+            "zone": "pantry",
+            "category": "condiment",
+            "added_date": str(today),
+            "best_before_date": str(today + datetime.timedelta(days=30)),
+            "calories_per_100g": 149.0,
+            "protein_per_100g": 6.4,
+            "carbs_per_100g": 33.0,
+            "fat_per_100g": 0.5,
+        },
+        {
+            "name": "QA Fixture Strawberries",
+            "quantity": 400.0,
+            "unit": "g",
+            "zone": "fridge",
+            "category": "fruit",
+            "added_date": str(today),
+            "best_before_date": str(today + datetime.timedelta(days=1)),
+            "calories_per_100g": 32.0,
+            "protein_per_100g": 0.7,
+            "carbs_per_100g": 7.7,
+            "fat_per_100g": 0.3,
+        },
+        {
+            "name": "QA Fixture Eggs",
+            "quantity": 12.0,
+            "unit": "count",
+            "zone": "fridge",
+            "category": "other",
+            "added_date": str(today),
+            "best_before_date": str(today + datetime.timedelta(days=14)),
+            "calories_per_100g": 155.0,
+            "protein_per_100g": 13.0,
+            "carbs_per_100g": 1.1,
+            "fat_per_100g": 11.0,
+        },
+    ]
+
+    for fixture in fixtures:
+        loc_id = location_ids.get(fixture["zone"])
+        if loc_id is not None:
+            fixture = {**fixture, "location_id": loc_id}
+        try:
+            r = requests.post(f"{BASE}/inventory", json=fixture, timeout=5)
+        except Exception:
+            continue
+        if r.status_code == 201:
+            qa_fixture_item_ids.append(r.json().get("id"))
+
+
+def _cleanup_qa_inventory_fixtures() -> None:
+    for item_id in qa_fixture_item_ids:
+        if item_id:
+            try:
+                requests.delete(f"{BASE}/inventory/{item_id}", timeout=5)
+            except Exception:
+                pass
 
 
 # ── 1. Health ─────────────────────────────────────────────────────────────────
@@ -99,6 +235,7 @@ except Exception as e:
 # ── 4. Inventory ──────────────────────────────────────────────────────────────
 section("4. Inventory — seed data & CRUD")
 today = datetime.date.today()
+_create_qa_inventory_fixtures(today)
 
 try:
     r = requests.get(f"{BASE}/inventory", timeout=5)
@@ -1797,6 +1934,8 @@ try:
     check("Missing API key message does not expose env var name", "ANTHROPIC_API_KEY" not in fallback.get("answer", ""))
 except Exception as e:
     check("RAG integrity and safe fallback", False, str(e))
+
+_cleanup_qa_inventory_fixtures()
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 total = len(results)
