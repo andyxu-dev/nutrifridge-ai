@@ -9,7 +9,7 @@ A structured walkthrough for live presentations. Each section includes what to s
 ```bash
 # Terminal 1 — start backend
 cd backend && source ../venv/bin/activate
-python seed.py          # populate with demo data (idempotent-safe)
+python seed.py          # reset user/inventory rows and populate demo data
 uvicorn app.main:app --reload --port 8000
 
 # Terminal 2 — start frontend
@@ -17,7 +17,7 @@ cd frontend && npm run dev
 
 # Terminal 3 — ready to run QA
 cd backend && source ../venv/bin/activate
-# (don't run yet — wait for QA section)
+# QA is self-contained; it does not require seed.py
 ```
 
 **Verify:**
@@ -129,10 +129,10 @@ python qa_check.py
 ```
 
 **Say while it runs:**
-> "The QA script is a 231-assertion end-to-end integration test suite. It runs against the live server, testing every endpoint. The 38 sections cover: CRUD for all entities, the Mifflin-St Jeor BMR calculation, meal scoring, unit conversion with lb-to-g deduction, the discard and waste log flow, household schedule CRUD, and the structured nutrition summary format."
+> "The QA script is a 312-check scripted integration harness. It runs against the live server, creates and cleans up its own QA-owned inventory fixtures, and covers CRUD, Mifflin-St Jeor target calculation, meal scoring, unit conversion, waste logging, household/family flows, assistant safety, and RAG boundaries."
 
 **When it completes:**
-> "231 out of 231 assertions pass. TypeScript also compiles with zero errors."
+> "312 out of 312 backend QA checks pass. The result is deterministic on a fresh database and does not depend on the manual demo seed script."
 
 ---
 

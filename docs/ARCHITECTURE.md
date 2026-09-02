@@ -85,9 +85,14 @@ NutriFridge AI is a full-stack nutrition and fridge management application consi
 
 1. `backend/app/main.py` imports all model modules (triggers SQLAlchemy class registration)
 2. `Base.metadata.create_all(bind=engine)` creates any missing tables (including new `household_meal_schedules` from Week 6)
-3. CORS middleware added (allows all origins in dev)
-4. All 10 routers registered under their path prefixes
-5. Uvicorn serves on port 8000
+3. Local SQLite compatibility migrations run
+4. Required defaults are created, including storage locations and the default household
+5. Bundled assistant knowledge sources are ingested if needed
+6. CORS middleware added (allows all origins in dev)
+7. All 10 routers registered under their path prefixes
+8. Uvicorn serves on port 8000
+
+Normal startup does not seed demo food inventory. Run `backend/seed.py` manually when you want the demo profile and food inventory.
 
 **Start command:**
 ```bash

@@ -14,9 +14,13 @@
 `backend/app/main.py`:
 1. Imports all SQLAlchemy model modules to register metadata
 2. Calls `Base.metadata.create_all(bind=engine)` — creates any missing tables (idempotent)
-3. Registers CORS middleware (allow all origins, headers, methods — dev setting)
-4. Registers 10 routers at their prefixes
-5. Serves via Uvicorn on port 8000
+3. Applies local SQLite compatibility migrations
+4. Creates required defaults such as storage locations and the default household
+5. Ingests bundled assistant knowledge sources if needed
+6. Registers CORS middleware and 10 routers
+7. Serves via Uvicorn on port 8000
+
+Normal startup does not seed demo food inventory. Use `backend/seed.py` only when you want demo data.
 
 **Start command:**
 ```bash
@@ -294,9 +298,9 @@ All services live in `backend/app/services/`.
 
 **File:** `backend/qa_check.py`
 **Run command:** `cd backend && source ../venv/bin/activate && python qa_check.py`
-**Requires:** FastAPI server running on port 8000
+**Requires:** FastAPI server running on port 8000. It does not require `seed.py`.
 
-**38 test sections, 231 assertions total (Week 6):**
+**54 scripted integration sections, 312 QA checks total:**
 
 | Section | Topic | Assertions |
 |---------|-------|-----------|
@@ -318,8 +322,11 @@ All services live in `backend/app/services/`.
 | 36 | PUT /family/schedule + persistence | 8 |
 | 37 | DELETE member removes from schedule | 4 |
 | 38 | Family grocery days_at_home + nutrition summary | 6 |
+| 39–54 | Recommendation reasons, hard exclusions, assistant/RAG safety, input validation | ~81 |
 
-**Result:** All 231/231 assertions pass on a clean server start.
+`qa_check.py` creates deterministic QA-owned inventory fixtures for personal planning, meal scoring, family planning, grocery checks, allergy/strict-avoid checks, and location assertions. It cleans up only the fixture inventory records it creates.
+
+**Result:** 312/312 QA checks pass on a fresh database with normal app startup, with or without manual demo seeding.
 
 ---
 
@@ -328,10 +335,8 @@ All services live in `backend/app/services/`.
 **File:** `backend/seed.py`
 **Run command:** `cd backend && source ../venv/bin/activate && python seed.py`
 
-Populates the database with:
-- Sample user profile
-- ~15 inventory items (various expiration dates, units, and categories)
-- Sample family members
-- Sample storage locations
+Resets existing user/inventory rows, then populates the database with:
+- Sample user profile: Alex
+- 7 demo inventory items: Beef, Garlic, Strawberries, Eggs, Spinach, Greek Yogurt, and Cooked Rice
 
-Use after first run to have demo-ready data.
+Use after first run to have demo-ready food/profile data. It does not create family members or storage locations. It is not part of normal application startup and is not required by backend QA.

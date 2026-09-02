@@ -20,7 +20,7 @@ A full-stack health-tech SaaS demo built with Next.js 14 + FastAPI. Enter your b
 | **User Preferences** | Cuisine · cooking time · diet style · preferred / disliked foods |
 | **Weekly Grocery List** | Personalised buy/avoid recommendations with priority badges |
 | **Waste Tracking** | Discard items with a reason → calories wasted logged and surfaced on dashboard |
-| **Backend QA Script** | 13 check groups / 75 assertions covering all features |
+| **Backend QA Script** | Self-contained 312-check integration harness covering the FastAPI backend |
 
 ---
 
@@ -108,7 +108,8 @@ source venv/bin/activate        # macOS / Linux
 # Install dependencies
 pip install -r requirements.txt
 
-# Start the API server
+# Start the API server. Startup creates/migrates schema and required defaults,
+# but does not automatically seed demo food inventory.
 uvicorn app.main:app --reload
 ```
 
@@ -124,7 +125,7 @@ source venv/bin/activate
 python3 seed.py
 ```
 
-Seeds **Alex** (175 cm, 88 kg, 24 yo, male, moderate activity, fat-loss goal, mixed cuisine, high-protein diet) with 7 inventory items covering every expiration risk level.
+This manual demo-data script resets existing user/inventory rows, then seeds **Alex** (175 cm, 88 kg, 24 yo, male, moderate activity, fat-loss goal, mixed cuisine, high-protein diet) with 7 demo inventory items: Beef, Garlic, Strawberries, Eggs, Spinach, Greek Yogurt, and Cooked Rice.
 
 ---
 
@@ -175,7 +176,7 @@ NutriFridge AI/
 ├── backend/
 │   ├── requirements.txt
 │   ├── seed.py                   # Sample user + 7 inventory items
-│   ├── qa_check.py               # 75 assertions across 13 check groups
+│   ├── qa_check.py               # Self-contained 312-check backend QA harness
 │   └── app/
 │       ├── main.py               # FastAPI app, CORS, router registration
 │       ├── database.py           # SQLAlchemy engine + session
@@ -339,20 +340,9 @@ Each candidate template is scored 0–100 before selection:
 cd backend && source venv/bin/activate && python3 qa_check.py
 ```
 
-**75/75 assertions PASS** across 13 check groups:
-1. Health check
-2. Profile CRUD
-3. Food database search
-4. Inventory CRUD + urgent sorting
-5. Calorie math (Mifflin-St Jeor verification)
-6. Meal plan generation
-7. Mark-as-eaten macro update
-8. lb → g inventory deduction
-9. Unit converter
-10. Preference fields persisted correctly
-11. Meal scoring (score 0–100, breakdown present)
-12. Grocery list structure and priority
-13. Discard flow + waste log
+**312/312 QA checks PASS** across 54 scripted integration sections.
+
+`qa_check.py` is self-contained: it creates deterministic QA-owned inventory fixtures for planner, grocery, family, allergy, and location checks, then cleans up only those fixture records. It does not require `seed.py` or pre-existing demo inventory.
 
 ---
 
@@ -409,5 +399,5 @@ The backend allows `http://localhost:3000` by default. If your frontend is on a 
 - Implemented a **rule-based meal scoring engine** (7 components, 0–100 scale) that prioritises expiring ingredients, respects macro targets, and accounts for user cuisine and diet preferences
 - Designed and built **5 REST API modules** (profile, inventory, nutrition log, meal plan, grocery list) with Pydantic v2 validation and full CRUD
 - Created a **waste tracking system** with calorie-wasted estimation and dashboard visualisation to encourage mindful consumption
-- Achieved **75/75 QA assertions** across 13 check groups with a custom backend QA script covering unit conversion, macro math, meal scoring, and preference persistence
+- Achieved **312/312 backend QA checks** with a self-contained integration harness covering unit conversion, macro math, meal scoring, family flows, assistant safety, and preference persistence
 - Engineered a **food database with 40+ entries and fuzzy search** that auto-fills nutrition data when items are added to inventory

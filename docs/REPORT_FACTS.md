@@ -53,8 +53,8 @@ Verified facts for technical presentations, portfolio demos, and resume claims. 
 
 | Metric | Value | Source |
 |--------|-------|--------|
-| Python QA assertions | 231 | `backend/qa_check.py` |
-| Python QA test sections | 38 | `backend/qa_check.py` |
+| Python QA checks | 312 | `backend/qa_check.py` |
+| Python QA sections | 54 | `backend/qa_check.py` |
 | Python QA run command | `python qa_check.py` (from `backend/`) | — |
 | Java unit tests | 40 | `backend-java/src/test/java/` |
 | Java test framework | JUnit 5 + Mockito | `backend-java/pom.xml` |
@@ -62,7 +62,7 @@ Verified facts for technical presentations, portfolio demos, and resume claims. 
 | TypeScript errors | 0 | `npm run build` output |
 | Next.js build | Clean (9 compiled pages) | build output |
 
-**Caveat on QA script:** It is a scripted integration test that makes real HTTP requests and asserts on responses — not a pytest/unittest suite. It does not measure code coverage.
+**Caveat on QA script:** It is a scripted integration harness that makes real HTTP requests and asserts on responses — not a pytest/unittest suite. It creates and cleans up QA-owned inventory fixtures, so it does not require `backend/seed.py` or pre-existing demo inventory.
 
 ---
 
@@ -138,7 +138,7 @@ Verified facts for technical presentations, portfolio demos, and resume claims. 
 
 These can be stated without qualification in a presentation:
 
-- "231-assertion end-to-end QA suite — all passing"
+- "312-check backend QA harness — all passing on a fresh database without demo seed data"
 - "8-component meal scoring algorithm balancing expiration urgency, nutrition targets, cuisine preferences, and health conditions"
 - "Persistent household meal schedule: weekday and weekend/holiday attendance per meal, stored in SQLite"
 - "Inventory deduction on meal logging with unit conversion between gram, kilogram, pound, and ounce"
@@ -158,11 +158,11 @@ These can be stated without qualification in a presentation:
 cd backend && source ../venv/bin/activate
 uvicorn app.main:app --reload --port 8000
 
-# Seed demo data (run before QA for clean state)
-python seed.py
-
-# Run full QA suite
+# Run full QA harness; it creates and cleans up its own QA fixtures
 python qa_check.py
+
+# Optional: reset user/inventory rows and seed demo data for a presentation
+python seed.py
 
 # Start frontend (separate terminal)
 cd frontend && npm run dev
