@@ -9,7 +9,7 @@ Tables:
 """
 
 import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
 from app.database import Base
 
 

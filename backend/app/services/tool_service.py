@@ -11,7 +11,7 @@ Arguments are validated via Pydantic models before execution.
 
 import json
 from datetime import date
-from typing import Any, Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -311,7 +311,6 @@ def _get_user_profile(db: Session) -> Dict:
     user = db.query(User).first()
     if not user:
         return _error("No user profile found.")
-    import json as _j
     result = {
         "name": user.name,
         "age": user.age,

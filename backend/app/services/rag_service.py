@@ -10,9 +10,8 @@ Generation: Anthropic Claude API (claude-haiku-4-5) for grounded answer generati
 
 import json
 import os
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 
-import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 from sqlalchemy.orm import Session

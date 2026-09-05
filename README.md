@@ -29,7 +29,7 @@ A full-stack health-tech SaaS demo built with Next.js 14 + FastAPI. Enter your b
 | Layer       | Technology                            |
 |-------------|---------------------------------------|
 | Frontend    | Next.js 14 (App Router), TypeScript, TailwindCSS |
-| Backend     | FastAPI, Python 3.11+                 |
+| Backend     | FastAPI, Python 3.12 recommended      |
 | Database    | SQLite — `backend/nutrifridge.db`     |
 | ORM         | SQLAlchemy 2.0                        |
 | Validation  | Pydantic v2                           |
@@ -101,12 +101,12 @@ flowchart LR
 cd backend
 
 # Create & activate a virtual environment
-python3 -m venv venv
+python3.12 -m venv venv
 source venv/bin/activate        # macOS / Linux
 # venv\Scripts\activate         # Windows PowerShell
 
-# Install dependencies
-pip install -r requirements.txt
+# Install runtime dependencies
+python -m pip install -r requirements.txt
 
 # Start the API server. Startup creates/migrates schema and required defaults,
 # but does not automatically seed demo food inventory.
@@ -117,7 +117,28 @@ The API runs at **http://localhost:8000** — interactive docs at **http://local
 
 ---
 
-### 2 — Seed sample data
+### 2 — Backend development tools
+
+From the repository root, after creating the backend virtual environment:
+
+```bash
+backend/venv/bin/python -m pip install -r backend/requirements-dev.txt
+
+# Focused pytest regression tests
+backend/venv/bin/python -m pytest backend/tests -q
+
+# Conservative lint checks
+backend/venv/bin/python -m ruff check backend/app backend/tests
+
+# Incremental type checks for isolated service modules
+backend/venv/bin/python -m mypy
+```
+
+`backend/tests` currently contains focused pytest regression tests. The separate `backend/qa_check.py` script is a live-server integration harness, not a pytest suite.
+
+---
+
+### 3 — Seed sample data
 
 ```bash
 cd backend
@@ -129,7 +150,7 @@ This manual demo-data script resets existing user/inventory rows, then seeds **A
 
 ---
 
-### 3 — Frontend
+### 4 — Frontend
 
 ```bash
 cd frontend
@@ -343,6 +364,8 @@ cd backend && source venv/bin/activate && python3 qa_check.py
 **312/312 QA checks PASS** across 54 scripted integration sections.
 
 `qa_check.py` is self-contained: it creates deterministic QA-owned inventory fixtures for planner, grocery, family, allergy, and location checks, then cleans up only those fixture records. It does not require `seed.py` or pre-existing demo inventory.
+
+Because `backend/app/database.py` currently hardcodes `sqlite:///./nutrifridge.db`, run the integration harness only against a disposable database/server environment. The current code does not read `SQLALCHEMY_DATABASE_URL`.
 
 ---
 

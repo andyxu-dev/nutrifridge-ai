@@ -259,7 +259,7 @@ DISCLAIMER: Always remind the user (once per response) to consult a healthcare p
                 tools=TOOL_SCHEMAS,
                 messages=messages,
             )
-        except Exception as e:
+        except Exception:
             return {
                 "assistant_message": "The AI agent could not complete that request right now. Please try again.",
                 "retrieved_sources": _build_citations(rag_chunks),

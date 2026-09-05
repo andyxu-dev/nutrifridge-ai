@@ -19,7 +19,6 @@ from app.models.inventory import InventoryItem
 from app.models.user import User
 from app.schemas.household import (
     FamilyMemberCreate,
-    FamilyMemberResponse,
     FamilyMemberUpdate,
 )
 from app.services.health_constraint_engine import (
