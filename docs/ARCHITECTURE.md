@@ -58,7 +58,7 @@ NutriFridge AI is a full-stack nutrition and fridge management application consi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SQLALCHEMY_DATABASE_URL` | `sqlite:///./nutrifridge.db` | SQLite file path (see `backend/app/database.py`) |
+| `SQLALCHEMY_DATABASE_URL` | `sqlite:///./nutrifridge.db` | Optional SQLite database location override, read from the process environment at backend startup |
 
 ### Spring Boot (`backend-java/src/main/resources/application.yml`)
 
@@ -93,6 +93,8 @@ NutriFridge AI is a full-stack nutrition and fridge management application consi
 8. Uvicorn serves on port 8000
 
 Normal startup does not seed demo food inventory. Run `backend/seed.py` manually when you want the demo profile and food inventory.
+
+The Python backend's database override is intended for SQLite file locations, for example `SQLALCHEMY_DATABASE_URL=sqlite:////absolute/path/to/custom.db`. Current local migration SQL is SQLite-oriented; do not treat this as broad PostgreSQL/MySQL production support.
 
 **Start command:**
 ```bash

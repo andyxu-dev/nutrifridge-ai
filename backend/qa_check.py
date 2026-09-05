@@ -5,11 +5,12 @@ Run from the backend/ directory with the server already running:
 """
 
 import json
+import os
 import sys
 import datetime
 import requests
 
-BASE = "http://localhost:8000"
+BASE = os.getenv("NUTRIFRIDGE_QA_BASE_URL", "http://localhost:8000")
 PASS = "\033[92mPASS\033[0m"
 FAIL = "\033[91mFAIL\033[0m"
 
@@ -1569,7 +1570,8 @@ except Exception as e:
 # ── 46. Tool service: allowlist enforcement and arg validation ─────────────────
 section("46. Tool service: allowlist and arg validation")
 try:
-    import sys as _sys, os as _os
+    import sys as _sys
+    import os as _os
     _sys.path.insert(0, _os.path.dirname(__file__))
     from app.services.tool_service import execute_tool, TOOL_SCHEMAS
     from app.database import SessionLocal as _SessionLocal

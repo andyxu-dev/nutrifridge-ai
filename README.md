@@ -115,6 +115,14 @@ uvicorn app.main:app --reload
 
 The API runs at **http://localhost:8000** — interactive docs at **http://localhost:8000/docs**.
 
+By default, the backend uses SQLite at `sqlite:///./nutrifridge.db`. To point a backend process at another SQLite file, set `SQLALCHEMY_DATABASE_URL` before starting Uvicorn:
+
+```bash
+SQLALCHEMY_DATABASE_URL=sqlite:////absolute/path/to/custom.db uvicorn app.main:app --reload
+```
+
+The override is read from the process environment during backend import/startup. The current local migration helpers are SQLite-oriented, so this setting should be treated as a SQLite location override rather than broad PostgreSQL/MySQL production support.
+
 ---
 
 ### 2 — Backend development tools
@@ -132,9 +140,16 @@ backend/venv/bin/python -m ruff check backend/app backend/tests
 
 # Incremental type checks for isolated service modules
 backend/venv/bin/python -m mypy
+
+# Safe live-server integration QA against a disposable SQLite database
+cd backend
+source venv/bin/activate
+python run_qa_safe.py
 ```
 
 `backend/tests` currently contains focused pytest regression tests. The separate `backend/qa_check.py` script is a live-server integration harness, not a pytest suite.
+
+`run_qa_safe.py` creates a temporary SQLite database, starts an isolated backend on a temporary local port, runs the 312 scripted integration checks, stops only its child backend process, and deletes the temporary QA data. It does not use `backend/nutrifridge.db`.
 
 ---
 
@@ -365,7 +380,7 @@ cd backend && source venv/bin/activate && python3 qa_check.py
 
 `qa_check.py` is self-contained: it creates deterministic QA-owned inventory fixtures for planner, grocery, family, allergy, and location checks, then cleans up only those fixture records. It does not require `seed.py` or pre-existing demo inventory.
 
-Because `backend/app/database.py` currently hardcodes `sqlite:///./nutrifridge.db`, run the integration harness only against a disposable database/server environment. The current code does not read `SQLALCHEMY_DATABASE_URL`.
+Prefer `python run_qa_safe.py` from `backend/` so the integration harness runs against a disposable database/server environment instead of `backend/nutrifridge.db`.
 
 ---
 
