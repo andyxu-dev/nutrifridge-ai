@@ -1,9 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.database import engine, Base, SessionLocal
+from app.migrations import migrate_db
 
 # Import all models so SQLAlchemy registers them before create_all
 import app.models.user          # noqa: F401
@@ -18,41 +18,6 @@ from app.routers import profile, inventory, nutrition, meal_plan, nutrition_log,
 from app.routers import grocery_list, waste_log, family, locations, assistant
 
 Base.metadata.create_all(bind=engine)
-
-
-def _migrate_db() -> None:
-    """Add new columns to existing tables (SQLite has no IF NOT EXISTS on ALTER TABLE)."""
-    migrations = [
-        # Week 4 — health constraints on users table
-        "ALTER TABLE users ADD COLUMN health_conditions TEXT",
-        "ALTER TABLE users ADD COLUMN allergies TEXT",
-        "ALTER TABLE users ADD COLUMN strict_avoid_foods TEXT",
-        "ALTER TABLE users ADD COLUMN macro_strategy VARCHAR",
-        "ALTER TABLE users ADD COLUMN custom_calorie_target FLOAT",
-        "ALTER TABLE users ADD COLUMN custom_protein_g FLOAT",
-        "ALTER TABLE users ADD COLUMN custom_carbs_g FLOAT",
-        "ALTER TABLE users ADD COLUMN custom_fat_g FLOAT",
-        # Week 4 — source + notes on meal_logs table
-        "ALTER TABLE meal_logs ADD COLUMN source VARCHAR",
-        "ALTER TABLE meal_logs ADD COLUMN notes TEXT",
-        "ALTER TABLE meal_logs ADD COLUMN assistant_confirmation_token VARCHAR",
-        # Week 5 — location tracking on inventory
-        "ALTER TABLE inventory ADD COLUMN location_id INTEGER",
-    ]
-    with engine.connect() as conn:
-        for stmt in migrations:
-            try:
-                conn.execute(text(stmt))
-                conn.commit()
-            except Exception:
-                pass  # column already exists
-        conn.execute(text(
-            "CREATE UNIQUE INDEX IF NOT EXISTS "
-            "ix_meal_logs_assistant_confirmation_token "
-            "ON meal_logs (assistant_confirmation_token) "
-            "WHERE assistant_confirmation_token IS NOT NULL"
-        ))
-        conn.commit()
 
 
 def _seed_defaults(db: Session) -> None:
@@ -133,7 +98,7 @@ def _seed_defaults(db: Session) -> None:
     ingest_knowledge_base(db, force=False)
 
 
-_migrate_db()
+migrate_db(engine)
 
 # Seed defaults after all tables exist
 _db = SessionLocal()
